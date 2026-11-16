@@ -168,3 +168,6 @@ grandes, abre antes un issue para acordar el enfoque.
 ## Licencia
 
 [MIT](LICENSE) © 2026 Paolo Álvarez.
+
+La licencia cubre el código. Si reutilizas el proyecto, usa otro nombre y otro
+icono para no confundirlo con la app oficial.
