@@ -1,0 +1,269 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		000000000000000000000200 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000100 /* main.swift */; };
+		000000000000000000000201 /* Avisos.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000101 /* Avisos.swift */; };
+		000000000000000000000203 /* SettingsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000103 /* SettingsWindow.swift */; };
+		000000000000000000000204 /* BuscarEstacionWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* BuscarEstacionWindow.swift */; };
+		000000000000000000000205 /* Localidad.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000105 /* Localidad.swift */; };
+		000000000000000000000206 /* OnboardingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000106 /* OnboardingWindow.swift */; };
+		000000000000000000000207 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000107 /* Localization.swift */; };
+		000000000000000000000320 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000311 /* PrivacyInfo.xcprivacy */; };
+		000000000000000000000321 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000312 /* Assets.xcassets */; };
+		000000000000000000000322 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000314 /* Localizable.strings */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		000000000000000000000100 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		000000000000000000000101 /* Avisos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Avisos.swift; sourceTree = "<group>"; };
+		000000000000000000000103 /* SettingsWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindow.swift; sourceTree = "<group>"; };
+		000000000000000000000104 /* BuscarEstacionWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuscarEstacionWindow.swift; sourceTree = "<group>"; };
+		000000000000000000000105 /* Localidad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localidad.swift; sourceTree = "<group>"; };
+		000000000000000000000106 /* OnboardingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindow.swift; sourceTree = "<group>"; };
+		000000000000000000000107 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
+		000000000000000000000303 /* Mirlo Weather.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Mirlo Weather.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000310 /* MirloWeather.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MirloWeather.entitlements; sourceTree = "<group>"; };
+		000000000000000000000311 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		000000000000000000000312 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		000000000000000000000313 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		000000000000000000000315 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
+		000000000000000000000316 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		000000000000000000000406 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		000000000000000000000330 /* AppStore */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000313 /* Info.plist */,
+				000000000000000000000310 /* MirloWeather.entitlements */,
+				000000000000000000000312 /* Assets.xcassets */,
+				000000000000000000000311 /* PrivacyInfo.xcprivacy */,
+				000000000000000000000314 /* Localizable.strings */,
+			);
+			path = AppStore;
+			sourceTree = "<group>";
+		};
+		000000000000000000000400 = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000100 /* main.swift */,
+				000000000000000000000101 /* Avisos.swift */,
+				000000000000000000000103 /* SettingsWindow.swift */,
+				000000000000000000000104 /* BuscarEstacionWindow.swift */,
+				000000000000000000000105 /* Localidad.swift */,
+				000000000000000000000106 /* OnboardingWindow.swift */,
+				000000000000000000000107 /* Localization.swift */,
+				000000000000000000000330 /* AppStore */,
+				000000000000000000000401 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		000000000000000000000401 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000303 /* Mirlo Weather.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		000000000000000000000402 /* Mirlo Weather */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000000000501 /* Build configuration list for PBXNativeTarget "Mirlo Weather" */;
+			buildPhases = (
+				000000000000000000000404 /* Sources */,
+				000000000000000000000406 /* Frameworks */,
+				000000000000000000000405 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Mirlo Weather";
+			productName = "Mirlo Weather";
+			productReference = 000000000000000000000303 /* Mirlo Weather.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		000000000000000000000403 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+			};
+			buildConfigurationList = 000000000000000000000500 /* Build configuration list for PBXProject "MirloWeather" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = es;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				es,
+				en,
+				Base,
+			);
+			mainGroup = 000000000000000000000400;
+			productRefGroup = 000000000000000000000401 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				000000000000000000000402 /* Mirlo Weather */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		000000000000000000000405 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000320 /* PrivacyInfo.xcprivacy in Resources */,
+				000000000000000000000321 /* Assets.xcassets in Resources */,
+				000000000000000000000322 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		000000000000000000000404 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000200 /* main.swift in Sources */,
+				000000000000000000000201 /* Avisos.swift in Sources */,
+				000000000000000000000203 /* SettingsWindow.swift in Sources */,
+				000000000000000000000204 /* BuscarEstacionWindow.swift in Sources */,
+				000000000000000000000205 /* Localidad.swift in Sources */,
+				000000000000000000000206 /* OnboardingWindow.swift in Sources */,
+				000000000000000000000207 /* Localization.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		000000000000000000000314 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				000000000000000000000315 /* es */,
+				000000000000000000000316 /* en */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		000000000000000000000502 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = APPSTORE;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		000000000000000000000503 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = APPSTORE;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		000000000000000000000504 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AppStore/MirloWeather.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = P8MVK24KF2;
+				ENABLE_HARDENED_RUNTIME = YES;
+				EXECUTABLE_NAME = NetatmoFree;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AppStore/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Mirlo weather";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paoloac.mirloweather;
+				PRODUCT_NAME = "Mirlo Weather";
+			};
+			name = Debug;
+		};
+		000000000000000000000505 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AppStore/MirloWeather.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = P8MVK24KF2;
+				ENABLE_HARDENED_RUNTIME = YES;
+				EXECUTABLE_NAME = NetatmoFree;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AppStore/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Mirlo weather";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paoloac.mirloweather;
+				PRODUCT_NAME = "Mirlo Weather";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		000000000000000000000500 /* Build configuration list for PBXProject "MirloWeather" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000502 /* Debug */,
+				000000000000000000000503 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		000000000000000000000501 /* Build configuration list for PBXNativeTarget "Mirlo Weather" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000504 /* Debug */,
+				000000000000000000000505 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 000000000000000000000403 /* Project object */;
+}
