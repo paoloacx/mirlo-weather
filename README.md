@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/icono.png" width="96" alt="Icono de Mirlo Weather">
+</p>
+
 # Mirlo Weather
 
 App nativa de barra de menús para macOS que muestra el tiempo de **tu estación
@@ -11,8 +15,7 @@ La versión oficial se distribuye **únicamente a través de la App Store**
 versión 1.0.
 
 Este repositorio contiene el **código fuente**. No se publican binarios ni
-actualizaciones fuera de la App Store: las releases antiguas (v0.2.x) quedan
-obsoletas y no deben usarse.
+actualizaciones fuera de la App Store.
 
 ## Dos compilaciones
 
@@ -32,6 +35,18 @@ condición de compilación `APPSTORE` en `MirloWeather.xcodeproj`.
 
 La variante independiente se conserva para desarrollo y para Macs con macOS 12.
 **No es un canal de distribución**: no se publican `.zip` ni releases con ella.
+
+## Estructura
+
+- `main.swift`, `Avisos.swift`, `SettingsWindow.swift`, `Localidad.swift`,
+  `OnboardingWindow.swift`, `BuscarEstacionWindow.swift` y `Localization.swift`:
+  código de la app.
+- `MirloWeather.xcodeproj`: proyecto de la variante App Store.
+- `AppStore/`: `Info.plist`, entitlements, declaración de privacidad, iconos y
+  traducciones español/inglés.
+- `build.command`: compilación independiente de desarrollo.
+- `ROADMAP.md` y `CHANGELOG.md`: estado, siguientes pasos e historial.
+- `docs/`: recursos del repositorio.
 
 ## Funciones
 
@@ -125,6 +140,10 @@ El modo sin cuenta usa el servicio `netatmo-free-worker` (Cloudflare Workers +
 D1), operado por el autor. No se envían datos personales: solo las coordenadas
 de la localidad elegida y la IP para el límite de peticiones.
 
+El código del Worker no forma parte de este repositorio por ahora: es el
+servicio compartido que atiende a la app. Si se publica más adelante, será con
+su propia guía de despliegue y sin credenciales.
+
 ## Limitaciones conocidas
 
 - La localidad se escribe a mano: no hay detección automática por GPS.
@@ -139,3 +158,13 @@ de la localidad elegida y la IP para el límite de peticiones.
   recompilación. La versión de App Store no tiene ese problema.
 - Las notificaciones necesitan permiso del sistema. Si se deniegan, los avisos
   siguen apareciendo en el menú y en la barra.
+
+## Contribuciones
+
+Los informes de errores y las propuestas son bienvenidos en
+[Issues](https://github.com/paoloacx/mirlo-weather/issues). Para cambios
+grandes, abre antes un issue para acordar el enfoque.
+
+## Licencia
+
+[MIT](LICENSE) © 2026 Paolo Álvarez.

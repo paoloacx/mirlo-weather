@@ -2,6 +2,7 @@
 build-errores.txt
 firma-errores.txt
 dist/
+build/
 Mirlo Weather.app/
 MirloWeather.xcodeproj/xcuserdata/
 MirloWeather.xcodeproj/project.xcworkspace/xcuserdata/

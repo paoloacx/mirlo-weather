@@ -81,7 +81,7 @@ Por eso, a partir de la 1.0:
 - `Updater.swift` y el menú de actualización existen solo bajo `#if !APPSTORE`.
 - La variante App Store usa el llavero de datos protegidos y no pide permisos de
   Llavero ajenos.
-- Las releases antiguas v0.2.x se consideran obsoletas y no deben descargarse.
+- Las releases antiguas v0.2.x se han eliminado del repositorio.
 
 ## Decisión: icono
 
