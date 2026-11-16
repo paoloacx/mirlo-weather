@@ -1,5 +1,9 @@
 #!/bin/bash
-# Genera el .zip que se adjunta a una release de GitHub.
+# Empaqueta la compilación independiente para pruebas locales.
+#
+# IMPORTANTE: este .zip es solo para uso interno. El canal oficial de
+# distribución es la App Store. No publiques este archivo ni crees releases
+# en GitHub con él.
 # Uso: ./release.command
 cd "$(dirname "$0")" || exit 1
 
@@ -24,7 +28,7 @@ if ! codesign --verify --deep --strict "$APP" 2> /tmp/mirlo-release-sign.txt; th
 fi
 
 mkdir -p dist
-ZIP="dist/MirloWeather-$VERSION.zip"
+ZIP="dist/MirloWeather-$VERSION-interno.zip"
 rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP" || exit 1
 
@@ -32,7 +36,4 @@ echo
 echo "Listo: $ZIP"
 shasum -a 256 "$ZIP"
 echo
-echo "Siguiente paso:"
-echo "  1. Crea una release en GitHub con etiqueta v$VERSION."
-echo "  2. Adjunta $ZIP como asset."
-echo "  3. Publica la release."
+echo "Solo para pruebas internas. La descarga oficial es la App Store."
