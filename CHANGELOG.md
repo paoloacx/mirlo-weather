@@ -1,5 +1,15 @@
 # Cambios
 
+## 0.4.1 (17) — compilación independiente
+
+- La gráfica 24 h usa el histórico oficial de Netatmo (`getmeasure`) para
+  temperatura, humedad, CO₂, presión y ruido, aunque la app haya estado cerrada.
+- El eje es siempre de 24 h y los huecos de más de 45 minutos se dejan en blanco
+  en vez de unirse con una recta.
+- Si un campo no tiene histórico en Netatmo (viento o lluvia de una estación
+  cercana, caldera), el pie lo indica y se usan las muestras de este Mac.
+- Corrige la 0.4.0 instalada, que no llegaba a pedir el histórico al Worker.
+
 ## 1.0 (1) — App Store
 
 - Primera versión distribuida en la App Store (macOS 13 o posterior).

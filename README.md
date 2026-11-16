@@ -25,7 +25,7 @@ condición de compilación `APPSTORE` en `MirloWeather.xcodeproj`.
 | | App Store (oficial) | Independiente (desarrollo) |
 | --- | --- | --- |
 | Bundle ID | `com.paoloac.mirloweather` | `es.privado.netatmo-free` |
-| Versión | 1.0 (1) | 0.4.0 (16) |
+| Versión | 1.0 (1) | 0.4.1 (17) |
 | macOS mínimo | 13.0 | 12.0 |
 | Distribución | App Store | Solo local/interna |
 | Actualizador | No | GitHub (solo compilaciones internas) |
@@ -75,9 +75,12 @@ La variante independiente se conserva para desarrollo y para Macs con macOS 12.
   horario de no molestar, resumen diario, aviso de datos obsoletos y registro
   local.
 - **Gráfica 24 h**: ventana flotante con el histórico oficial de Netatmo
-  (`getmeasure` a 30 min). El selector **Campo** permite cambiar entre
-  temperatura, humedad, CO₂, presión, ruido, termostato, caldera, lluvia o
-  viento sin cerrar la ventana.
+  (`getmeasure` a 30 min) para temperatura, humedad, CO₂, presión y ruido,
+  aunque la app haya estado cerrada. El eje cubre siempre 24 h y los huecos
+  reales se dejan en blanco. Para viento, lluvia de una estación cercana y
+  caldera, Netatmo no publica histórico: la gráfica usa las muestras de este
+  Mac y lo indica en el pie. El selector **Campo** permite cambiar entre todos
+  los campos sin cerrar la ventana.
 - **Caldera**: estado real publicado por el termostato y tiempos oficiales de
   Netatmo (`sum_boiler_on`) para hoy, ayer y el mes en curso. No se estima por
   muestreo.
@@ -150,6 +153,9 @@ su propia guía de despliegue y sin credenciales.
 - La estación cercana y el modo localidad dependen de que otras personas
   compartan sus datos en Weathermap. Si una estación desaparece o deja de
   publicar viento/lluvia, la app lo avisa y permite elegir otra.
+- La gráfica no puede dibujar el histórico de viento o lluvia de una estación
+  pública cercana: Netatmo solo entrega su dato actual (`getpublicdata`). En
+  esos campos se muestran las muestras guardadas por la app en este Mac.
 - Ningún sitio web puede cerrar una pestaña que el usuario abrió a mano. Tras
   autorizar, la página muestra **Cuenta conectada** e intenta volver a la app.
 - Si se pierde la credencial del Llavero pero se conserva la configuración, hay

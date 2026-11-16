@@ -130,6 +130,9 @@ final class VistaGrafica: NSView {
     var puntos: [(ts: Double, valor: Double)] = []
     var campo: String = "exterior.temperatura"
     var origen: String = "local"
+    // Aclaración opcional del pie (por ejemplo, cuando Netatmo no publica
+    // histórico del campo y solo hay muestras de este Mac).
+    var nota: String = ""
 
     override var intrinsicContentSize: NSSize { NSSize(width: 336, height: 164) }
 
@@ -200,16 +203,30 @@ final class VistaGrafica: NSView {
         }
         guia.stroke()
 
-        let t0 = puntos.first!.ts, t1 = puntos.last!.ts
-        let span = max(t1 - t0, 1)
+        // La ventana representa siempre las últimas 24 h, no solo el tramo que
+        // ocupan los puntos: así se ve de un vistazo si faltan datos a la
+        // izquierda (por ejemplo, si la app lleva poco tiempo abierta).
+        let t1 = Date().timeIntervalSince1970
+        let t0 = t1 - 24 * 3600
+        let span = 24 * 3600.0
         let path = NSBezierPath()
         path.lineWidth = 1.5
         path.lineJoinStyle = .round
-        for (i, p) in puntos.enumerated() {
+        var anterior: Double?
+        for p in puntos where p.ts >= t0 {
             let x = area.minX + CGFloat((p.ts - t0) / span) * area.width
             let y = area.minY + CGFloat((p.valor - mn) / rango) * area.height
-            if i == 0 { path.move(to: NSPoint(x: x, y: y)) }
-            else { path.line(to: NSPoint(x: x, y: y)) }
+            // Un hueco de más de 45 min (los datos de Netatmo van cada 30)
+            // se deja en blanco en vez de unir los extremos con una recta
+            // que no ocurrió.
+            if let previo = anterior, p.ts - previo > 45 * 60 {
+                path.move(to: NSPoint(x: x, y: y))
+            } else if anterior == nil {
+                path.move(to: NSPoint(x: x, y: y))
+            } else {
+                path.line(to: NSPoint(x: x, y: y))
+            }
+            anterior = p.ts
         }
         NSColor.controlAccentColor.setStroke()
         path.stroke()
@@ -232,6 +249,7 @@ final class VistaGrafica: NSView {
         let pie = (origen == "Netatmo" ? "Netatmo" : L("local"))
             + " · " + L("%d muestras", puntos.count)
             + (info.unidad.isEmpty ? "" : " · " + info.unidad)
+            + (nota.isEmpty ? "" : " · " + nota)
         (pie as NSString).draw(
             at: NSPoint(x: margenIzq, y: altoPie - 10),
             withAttributes: attrs
@@ -3373,9 +3391,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let remota = historialNetatmo[cfg.graphField], remota.puntos.count >= 2 {
             vistaGrafica.puntos = remota.puntos
             vistaGrafica.origen = "Netatmo"
+            vistaGrafica.nota = ""
         } else {
             vistaGrafica.puntos = leerHistorialGrafica(campo: cfg.graphField)
             vistaGrafica.origen = "local"
+            // Si el módulo ya respondió 404, Netatmo no publica histórico de
+            // ese campo: se avisa en el pie para que no parezca un fallo.
+            if !modoLocalidad,
+               let modulo = moduloGrafica(cfg.graphField),
+               moduloSinHistorial.contains(modulo) {
+                vistaGrafica.nota = L("sin histórico de Netatmo")
+            } else {
+                vistaGrafica.nota = ""
+            }
         }
         vistaGrafica.needsDisplay = true
         refrescarHistorialNetatmo(campo: cfg.graphField)

@@ -236,16 +236,17 @@ datos innecesarios.
 
 ### 2.2 Gráfica de 24 h
 
-> **Estado: completada en v0.3.3 (build 15).** La serie principal viene del
-> histórico oficial de Netatmo (`/v1/history` → `getmeasure`, escala `30min`,
-> 24 h, cacheado 15 min en D1). Si el campo no tiene serie en Netatmo
-> (caldera o viento/lluvia de la estación cercana), se usa `historial.jsonl`
-> y la leyenda indica `Netatmo` o `local`. La gráfica se abre en una ventana
-> flotante con los valores en el eje Y (máximo, medio y mínimo) y las horas en
-> el eje X (−24 h, −12 h, ahora). El selector **Campo** permite cambiar entre
-> temperatura, humedad, CO₂, presión, ruido, termostato, caldera, lluvia o
-> viento sin cerrar la ventana, y se incluye el borrado del historial local con
-> confirmación.
+> **Estado: completada en v0.3.3 (build 15) y corregida en 0.4.1 (build 17).** La
+> serie principal viene del histórico oficial de Netatmo (`/v1/history` →
+> `getmeasure`, escala `30min`, 24 h, cacheado 15 min en D1). Si el campo no
+> tiene serie en Netatmo (caldera o viento/lluvia de la estación cercana), se usa
+> `historial.jsonl` y la leyenda indica `Netatmo` o `local` (con la nota «sin
+> histórico de Netatmo»). La gráfica se abre en una ventana flotante con los
+> valores en el eje Y (máximo, medio y mínimo) y las horas en el eje X (−24 h,
+> −12 h, ahora). El eje cubre siempre 24 h y los huecos de más de 45 minutos se
+> dejan en blanco. El selector **Campo** permite cambiar entre temperatura,
+> humedad, CO₂, presión, ruido, termostato, caldera, lluvia o viento sin cerrar
+> la ventana, y se incluye el borrado del historial local con confirmación.
 
 Portar `VistaGrafica` (sparkline dibujada a mano, sin librerías):
 

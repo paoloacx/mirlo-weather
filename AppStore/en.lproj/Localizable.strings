@@ -20,6 +20,7 @@
 "Sin historial todavía para «%@»." = "No history yet for “%@”.";
 "Prueba otro campo o espera a la próxima consulta." = "Try another field or wait for the next update.";
 "Se genera con las lecturas de la app." = "Generated from app readings.";
+"sin histórico de Netatmo" = "no Netatmo history";
 "ahora" = "now";
 "local" = "local";
 "%d muestras" = "%d samples";
