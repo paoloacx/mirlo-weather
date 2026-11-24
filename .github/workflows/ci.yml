@@ -1,0 +1,31 @@
+# CI de Mirlo Weather: compila la app y ejecuta las pruebas mínimas en cada push
+# y en las pull requests. No firma ni sube nada a la App Store.
+name: CI
+
+on:
+  push:
+    branches: ["main", "1.1", "1.1.1", "*"]
+  pull_request:
+
+jobs:
+  pruebas:
+    name: Pruebas y claves
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pruebas del motor y claves de localización
+        run: ./pruebas.command
+
+  compilacion:
+    name: Compilación Release (sin firmar)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compilar el esquema de la App Store
+        run: >
+          xcodebuild -project MirloWeather.xcodeproj
+          -scheme "Mirlo Weather"
+          -configuration Release
+          -derivedDataPath "$RUNNER_TEMP/mirlo-derived"
+          CODE_SIGNING_ALLOWED=NO
+          build

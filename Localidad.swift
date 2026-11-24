@@ -48,6 +48,53 @@ struct LocalidadConfig {
     }
 }
 
+// Garantiza que la localidad activa esté en la lista, sin nombres repetidos y
+// con un máximo de cinco. Devuelve true si hubo que tocar algo, para guardar
+// la migración una sola vez.
+func migrarLocalidades(activa: LocalidadConfig?,
+                       lista: inout [LocalidadConfig]) -> Bool {
+    var cambio = false
+    if let activa = activa,
+       !lista.contains(where: { $0.nombre == activa.nombre }) {
+        lista.insert(activa, at: 0)
+        cambio = true
+    }
+    var vistas = Set<String>()
+    let sinDuplicados = lista.filter { vistas.insert($0.nombre).inserted }
+    if sinDuplicados.count != lista.count {
+        lista = sinDuplicados
+        cambio = true
+    }
+    if lista.count > 5 {
+        lista = Array(lista.prefix(5))
+        cambio = true
+    }
+    return cambio
+}
+
+// ----------------------------- estación principal -----------------------------
+// Sustituye las lecturas principales (interior y exterior) por las de la
+// estación elegida. El termostato, el histórico y la lista de módulos no
+// dependen de esta selección, así que se copian tal cual.
+func aplicarEstacionPrincipal(_ json: [String: Any], estacion: String) -> [String: Any] {
+    guard !estacion.isEmpty,
+          let modulos = json["modulos"] as? [[String: Any]] else { return json }
+    let elegidos = modulos.filter {
+        (($0["estacion"] as? String) ?? "") == estacion
+    }
+    guard !elegidos.isEmpty else { return json }
+    var copia = json
+    if let exterior = elegidos.first(where: { ($0["tipo"] as? String) == "exterior" }),
+       let datos = exterior["datos"] as? [String: Any], !datos.isEmpty {
+        copia["exterior"] = datos
+    }
+    if let interior = elegidos.first(where: { ($0["tipo"] as? String) == "interior" }),
+       let datos = interior["datos"] as? [String: Any], !datos.isEmpty {
+        copia["interior"] = datos
+    }
+    return copia
+}
+
 // ----------------------------- medidas públicas -----------------------------
 func medidaEstacion(_ estacion: [String: Any]?, _ clave: String) -> Double? {
     guard let medidas = estacion?["medidas"] as? [String: Any],

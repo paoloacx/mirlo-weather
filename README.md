@@ -45,6 +45,8 @@ La variante independiente se conserva para desarrollo y para Macs con macOS 12.
 - `AppStore/`: `Info.plist`, entitlements, declaración de privacidad, iconos y
   traducciones español/inglés.
 - `build.command`: compilación independiente de desarrollo.
+- `pruebas.command` y `Tests/`: pruebas mínimas de la lógica de avisos y de las
+  claves de localización.
 - `ROADMAP.md` y `CHANGELOG.md`: estado, siguientes pasos e historial.
 - `docs/`: recursos del repositorio.
 
@@ -113,6 +115,17 @@ open "Mirlo Weather.app"
 
 Compila, firma (Developer ID si hay identidad; si no, ad-hoc) y genera la app en
 la carpeta del proyecto. Para macOS 12 y pruebas locales.
+
+### Pruebas
+
+```sh
+./pruebas.command
+```
+
+Compila el código real de `Avisos.swift` con apoyos de prueba y ejecuta la suite
+del histórico local y del motor de avisos. Después comprueba que todas las
+claves usadas con `L("…")` existen en español y en inglés. Usa una carpeta
+temporal: no toca `~/.netatmo-free`.
 
 ## Primera conexión
 

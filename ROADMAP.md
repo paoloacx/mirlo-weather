@@ -1,11 +1,13 @@
 # Hoja de ruta de Mirlo Weather
 
 Mirlo Weather nace como la versión multiusuario y gratuita de la app personal
-`netatmo-menubar`. La app personal **no se toca**: sigue siendo la referencia
-funcional y la fuente de ideas. Esta hoja de ruta ordena qué funciones hay que
-heredar, en qué orden y con qué adaptaciones.
+`netatmo-menubar`. La app personal fue la referencia funcional y la fuente de
+ideas. Esta hoja de ruta ordena qué funciones había que heredar, en qué orden y
+con qué adaptaciones.
 
-- Referencia: `../netatmo-menubar` (`main.swift`, v0.11, git `5cd9128`).
+- Referencia histórica: `netatmo-menubar` v0.11 (git `5cd9128`), hoy solo en
+  `https://github.com/paoloacx/Netatmo-menubar`. La copia local se retiró el
+  16/11/2026 al quedar todo portado a Mirlo.
 - Destino: `netatmo-free-app` (Mirlo Weather, `es.privado.netatmo-free`).
 - Servicio: `netatmo-free-worker` (Workers Free + D1, solo lectura).
 

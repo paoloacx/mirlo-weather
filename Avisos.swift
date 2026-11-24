@@ -5,6 +5,7 @@
 // silencios, horario de no molestar, resumen diario, datos obsoletos y
 // registro local. Todo se guarda solo en este Mac.
 import Cocoa
+import UniformTypeIdentifiers
 import UserNotifications
 
 let AVISOS_ESTADO_PATH = CONFIG_DIR.appendingPathComponent("avisos-estado.json")
@@ -282,6 +283,67 @@ func leerHistorialAvisos(horas: Double = 2) -> [MuestraHistorial] {
     return out
 }
 
+// ----------------------------- archivo de avisos -----------------------------
+// Formato de exportación: solo reglas, con versión. Nunca incluye historial,
+// silencios ni estados de anti-spam, para que un archivo se pueda compartir
+// sin llevar datos de este Mac.
+enum ErrorArchivoAvisos: Error {
+    case formato
+    case version(Int)
+    case sinReglasValidas
+
+    var descripcion: String {
+        switch self {
+        case .formato:
+            return L("El archivo no tiene el formato de avisos de Mirlo Weather.")
+        case .version(let v):
+            return L("El archivo usa una versión (%d) que esta app no entiende.", v)
+        case .sinReglasValidas:
+            return L("El archivo no contiene ninguna regla válida.")
+        }
+    }
+}
+
+enum ArchivoAvisos {
+    static let version = 1
+
+    static func exportar(_ reglas: [ReglaAviso]) -> Data? {
+        let d: [String: Any] = [
+            "app": "Mirlo Weather",
+            "version": version,
+            "reglas": reglas.map { $0.diccionario },
+        ]
+        return try? JSONSerialization.data(
+            withJSONObject: d,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+    }
+
+    static func leer(_ data: Data) -> Result<[ReglaAviso], ErrorArchivoAvisos> {
+        guard let objeto = try? JSONSerialization.jsonObject(with: data),
+              let d = objeto as? [String: Any] else {
+            return .failure(.formato)
+        }
+        guard let v = entero(d["version"]) else { return .failure(.formato) }
+        guard v == version else { return .failure(.version(v)) }
+        guard let lista = d["reglas"] as? [[String: Any]], !lista.isEmpty else {
+            return .failure(.sinReglasValidas)
+        }
+        var reglas: [ReglaAviso] = []
+        var ids = Set<String>()
+        for cruda in lista {
+            guard var regla = ReglaAviso.desde(cruda) else { continue }
+            // Un archivo con ids repetidos no debe hacer que dos reglas
+            // compartan silencio ni historial de anti-spam.
+            if ids.contains(regla.id) { regla.id = UUID().uuidString }
+            ids.insert(regla.id)
+            reglas.append(regla)
+        }
+        guard !reglas.isEmpty else { return .failure(.sinReglasValidas) }
+        return .success(reglas)
+    }
+}
+
 // ----------------------------- motor de avisos -----------------------------
 final class MotorAvisos {
     private let lock = NSLock()
@@ -340,6 +402,31 @@ final class MotorAvisos {
     func registroAvisos() -> [(ts: Double, texto: String)] {
         lock.lock(); defer { lock.unlock() }
         return registro
+    }
+
+    // ------------------------- exportar e importar -------------------------
+    func exportarReglas() -> Data? {
+        ArchivoAvisos.exportar(snapshot().reglas)
+    }
+
+    // Devuelve cuántas reglas se han añadido. Con `fusionar` se conservan las
+    // actuales y solo entran las que no compartan id; si no, se reemplazan.
+    func importarReglas(_ data: Data, fusionar: Bool)
+        -> Result<Int, ErrorArchivoAvisos> {
+        switch ArchivoAvisos.leer(data) {
+        case .failure(let error):
+            return .failure(error)
+        case .success(let nuevas):
+            let actuales = snapshot().reglas
+            if fusionar {
+                let ids = Set(actuales.map { $0.id })
+                let anadidas = nuevas.filter { !ids.contains($0.id) }
+                setReglas(actuales + anadidas)
+                return .success(anadidas.count)
+            }
+            setReglas(nuevas)
+            return .success(nuevas.count)
+        }
     }
 
     func contarAvisosHoy() -> Int {
@@ -415,6 +502,14 @@ final class MotorAvisos {
                                   ventanaMin: ventana)
         }
         return valores[clave]
+    }
+
+    // Tendencia visible en el menú y en la barra: reutiliza el mismo cálculo
+    // que las reglas de aviso, con el historial local de este Mac.
+    func tendencia(_ campo: String, actual: Double, ventanaMin: Int) -> Double? {
+        valorTendencia(campo, actual: actual,
+                       historial: leerHistorialAvisos(horas: 2),
+                       ventanaMin: ventanaMin)
     }
 
     private func valorTendencia(_ campo: String, actual: Double,
@@ -501,12 +596,13 @@ final class MotorAvisos {
 
     // ------------------------- entrega y registro -------------------------
     func entregarAviso(titulo: String, cuerpo: String, texto: String,
-                       id: String, momento: Double) {
+                       id: String, momento: Double, reglaId: String? = nil) {
         let s = snapshot()
         let silenciado = enHorarioSilencio(s)
         var entregado = false
         if !silenciado {
-            entregado = NotificationPresenter.shared.enviar(titulo: titulo, cuerpo: cuerpo)
+            entregado = NotificationPresenter.shared.enviar(
+                titulo: titulo, cuerpo: cuerpo, reglaId: reglaId)
             if !entregado {
                 DispatchQueue.main.async { [weak self] in
                     self?.onAvisoVisible?(texto)
@@ -539,7 +635,7 @@ final class MotorAvisos {
         let texto = "\(r.nombre): \(c.nombre) = \(valorTxt)"
         let cuerpo = descripcionRegla(r) + "\n" + L("Valor actual: %@", valorTxt)
         entregarAviso(titulo: "Mirlo Weather · \(r.nombre)", cuerpo: cuerpo,
-                      texto: texto, id: r.id, momento: momento)
+                      texto: texto, id: r.id, momento: momento, reglaId: r.id)
     }
 
     // ------------------------- persistencia -------------------------
@@ -599,11 +695,14 @@ final class VistaVolcado: NSView {
     override var isFlipped: Bool { true }
 }
 
-final class VentanaAvisos: NSObject, NSWindowDelegate {
+// Contenido de la sección de avisos. Es una vista reutilizable para poder
+// montarla dentro de la ventana única de Ajustes sin duplicar el motor ni el
+// estado. La hoja del editor se presenta sobre la ventana que la contiene.
+final class VistaAvisos: NSView {
     private let motor: MotorAvisos
     private let pollSeconds: Int
     var onTestNotification: (() -> Void)?
-    private var ventana: NSWindow!
+    var hostWindow: (() -> NSWindow?)?
     private var pilaReglas: NSStackView!
     private var chkActivar: NSButton!
     private var chkObsoletos: NSButton!
@@ -620,8 +719,12 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
     init(motor: MotorAvisos, pollSeconds: Int) {
         self.motor = motor
         self.pollSeconds = pollSeconds
-        super.init()
+        super.init(frame: .zero)
         construir()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) no está disponible")
     }
 
     private func espaciador() -> NSView {
@@ -651,18 +754,8 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
     }
 
     private func construir() {
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 660),
-                         styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                         backing: .buffered, defer: false)
-        w.title = L("Avisos de Mirlo Weather")
-        w.minSize = NSSize(width: 620, height: 520)
-        w.isReleasedWhenClosed = false
-        w.delegate = self
-        w.center()
-        ventana = w
-
-        let raiz = NSView()
-        w.contentView = raiz
+        translatesAutoresizingMaskIntoConstraints = false
+        let raiz = self
 
         let titulo = NSTextField(labelWithString: L("Avisos por umbral"))
         titulo.font = .systemFont(ofSize: 17, weight: .semibold)
@@ -770,11 +863,24 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
         let btnProbar = NSButton(title: L("Probar notificación"), target: self,
                                  action: #selector(probarAviso(_:)))
         btnProbar.bezelStyle = .rounded
-        let btnCerrar = NSButton(title: L("Cerrar"), target: self, action: #selector(cerrarVentana(_:)))
-        btnCerrar.bezelStyle = .rounded
-        btnCerrar.keyEquivalent = "\u{1b}"
 
-        let pie = NSStackView(views: [btnAnadir, btnProbar, espaciador(), btnCerrar])
+        // Exportar e importar viven en un menú para no llenar el pie.
+        let mas = NSPopUpButton(frame: .zero, pullsDown: true)
+        mas.addItem(withTitle: L("Más"))
+        mas.menu?.addItem(NSMenuItem(
+            title: L("Exportar avisos…"),
+            action: #selector(exportarAvisos(_:)),
+            keyEquivalent: ""
+        ))
+        mas.menu?.items.last?.target = self
+        mas.menu?.addItem(NSMenuItem(
+            title: L("Importar avisos…"),
+            action: #selector(importarAvisos(_:)),
+            keyEquivalent: ""
+        ))
+        mas.menu?.items.last?.target = self
+
+        let pie = NSStackView(views: [btnAnadir, btnProbar, espaciador(), mas])
         pie.orientation = .horizontal
         pie.alignment = .centerY
         pie.spacing = 8
@@ -803,12 +909,6 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
         ])
 
         refresh()
-    }
-
-    func mostrar() {
-        refresh()
-        NSApp.activate(ignoringOtherApps: true)
-        ventana.makeKeyAndOrderFront(nil)
     }
 
     func refresh() {
@@ -877,32 +977,100 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
             textos.addArrangedSubview(aviso)
         }
 
-        let silenciar = NSButton(title: snoozed ? L("Reactivar") : L("Silenciar"),
-                                 target: self,
-                                 action: snoozed ? #selector(reactivarRegla(_:))
-                                                 : #selector(menuSilenciar(_:)))
-        silenciar.bezelStyle = .rounded
-        silenciar.controlSize = .small
-        silenciar.identifier = NSUserInterfaceItemIdentifier(r.id)
-        silenciar.contentTintColor = snoozed ? .systemOrange : nil
-
-        let editar = NSButton(title: L("Editar"), target: self, action: #selector(editarRegla(_:)))
-        editar.bezelStyle = .rounded
-        editar.controlSize = .small
-        editar.identifier = NSUserInterfaceItemIdentifier(r.id)
-
-        let borrar = NSButton(title: L("Eliminar"), target: self, action: #selector(eliminarRegla(_:)))
-        borrar.bezelStyle = .rounded
-        borrar.controlSize = .small
-        borrar.identifier = NSUserInterfaceItemIdentifier(r.id)
+        // Un solo botón «…» con las acciones de la regla. Mantiene la fila
+        // compacta dentro del panel y deja el texto con espacio suficiente.
+        let acciones = NSButton()
+        acciones.bezelStyle = .accessoryBarAction
+        acciones.image = NSImage(
+            systemSymbolName: "ellipsis",
+            accessibilityDescription: L("Acciones del aviso")
+        )
+        acciones.imagePosition = .imageOnly
+        acciones.target = self
+        acciones.action = #selector(mostrarAccionesAviso(_:))
+        acciones.identifier = NSUserInterfaceItemIdentifier(r.id)
+        acciones.toolTip = L("Silenciar, editar o eliminar este aviso")
+        acciones.contentTintColor = snoozed ? .systemOrange : nil
 
         fila.addArrangedSubview(chk)
         fila.addArrangedSubview(textos)
         fila.addArrangedSubview(espaciador())
-        fila.addArrangedSubview(silenciar)
-        fila.addArrangedSubview(editar)
-        fila.addArrangedSubview(borrar)
+        fila.addArrangedSubview(acciones)
         return fila
+    }
+
+    @objc private func mostrarAccionesAviso(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue else { return }
+        let estado = motor.snapshot()
+        let snoozed = (estado.silencios[id] ?? 0) > Date().timeIntervalSince1970
+        let menu = NSMenu()
+
+        if snoozed {
+            let reactivar = NSMenuItem(
+                title: L("Reactivar"),
+                action: #selector(reactivarRegla(_:)),
+                keyEquivalent: ""
+            )
+            reactivar.target = self
+            reactivar.representedObject = id
+            menu.addItem(reactivar)
+        } else {
+            let ahora = Date().timeIntervalSince1970
+            let manana = Calendar.current.date(
+                bySettingHour: 8, minute: 0, second: 0,
+                of: Date().addingTimeInterval(86_400)
+            ) ?? Date()
+
+            let silenciar = NSMenuItem(title: L("Silenciar"), action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            let unaHora = NSMenuItem(
+                title: L("Durante 1 hora"),
+                action: #selector(aplicarSilencio(_:)),
+                keyEquivalent: ""
+            )
+            unaHora.target = self
+            unaHora.representedObject = ["id": id, "hasta": ahora + 3600]
+            submenu.addItem(unaHora)
+            let hastaManana = NSMenuItem(
+                title: L("Hasta mañana a las 08:00"),
+                action: #selector(aplicarSilencio(_:)),
+                keyEquivalent: ""
+            )
+            hastaManana.target = self
+            hastaManana.representedObject = ["id": id,
+                                             "hasta": manana.timeIntervalSince1970]
+            submenu.addItem(hastaManana)
+            silenciar.submenu = submenu
+            menu.addItem(silenciar)
+        }
+
+        let editar = NSMenuItem(title: L("Editar"), action: #selector(editarRegla(_:)),
+                                keyEquivalent: "")
+        editar.target = self
+        editar.representedObject = id
+        menu.addItem(editar)
+
+        menu.addItem(.separator())
+        let eliminar = NSMenuItem(title: L("Eliminar"), action: #selector(eliminarRegla(_:)),
+                                  keyEquivalent: "")
+        eliminar.target = self
+        eliminar.representedObject = id
+        menu.addItem(eliminar)
+
+        menu.popUp(positioning: nil,
+                   at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    // Los controles de la fila y los elementos del menú llegan por vías
+    // distintas; este ayudante unifica la lectura del identificador.
+    private func idDeRemitente(_ sender: Any?) -> String? {
+        if let boton = sender as? NSButton {
+            return boton.identifier?.rawValue
+        }
+        if let item = sender as? NSMenuItem {
+            return item.representedObject as? String
+        }
+        return nil
     }
 
     private func actualizarPermiso() {
@@ -975,29 +1143,6 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
         }
     }
 
-    @objc private func menuSilenciar(_ sender: NSButton) {
-        guard let id = sender.identifier?.rawValue else { return }
-        let ahora = Date().timeIntervalSince1970
-        let manana = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0,
-                                           of: Date().addingTimeInterval(86_400)) ?? Date()
-        let menu = NSMenu()
-        let unaHora = NSMenuItem(title: L("Durante 1 hora"), action: #selector(aplicarSilencio(_:)),
-                                 keyEquivalent: "")
-        unaHora.target = self
-        unaHora.representedObject = ["id": id, "hasta": ahora + 3600]
-        menu.addItem(unaHora)
-        let hastaManana = NSMenuItem(title: L("Hasta mañana a las 08:00"),
-                                     action: #selector(aplicarSilencio(_:)), keyEquivalent: "")
-        hastaManana.target = self
-        hastaManana.representedObject = ["id": id, "hasta": manana.timeIntervalSince1970]
-        menu.addItem(hastaManana)
-        menu.addItem(.separator())
-        let cancelar = NSMenuItem(title: L("Cancelar"), action: nil, keyEquivalent: "")
-        menu.addItem(cancelar)
-        menu.popUp(positioning: nil,
-                   at: NSPoint(x: 0, y: sender.bounds.height + 2), in: sender)
-    }
-
     @objc private func aplicarSilencio(_ sender: NSMenuItem) {
         guard let d = sender.representedObject as? [String: Any],
               let id = d["id"] as? String, let hasta = num(d["hasta"]) else { return }
@@ -1005,8 +1150,8 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
         refresh()
     }
 
-    @objc private func reactivarRegla(_ sender: NSButton) {
-        guard let id = sender.identifier?.rawValue else { return }
+    @objc private func reactivarRegla(_ sender: Any?) {
+        guard let id = idDeRemitente(sender) else { return }
         motor.reactivarRegla(id)
         refresh()
     }
@@ -1021,14 +1166,14 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
         refresh()
     }
 
-    @objc private func editarRegla(_ sender: NSButton) {
-        guard let id = sender.identifier?.rawValue else { return }
+    @objc private func editarRegla(_ sender: Any?) {
+        guard let id = idDeRemitente(sender) else { return }
         guard let r = motor.snapshot().reglas.first(where: { $0.id == id }) else { return }
         abrirEditor(r)
     }
 
-    @objc private func eliminarRegla(_ sender: NSButton) {
-        guard let id = sender.identifier?.rawValue else { return }
+    @objc private func eliminarRegla(_ sender: Any?) {
+        guard let id = idDeRemitente(sender) else { return }
         let alerta = NSAlert()
         alerta.messageText = L("¿Eliminar este aviso?")
         alerta.informativeText = L("Podrás volver a crearlo cuando quieras.")
@@ -1052,8 +1197,88 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
         onTestNotification?()
     }
 
-    @objc private func cerrarVentana(_ sender: Any?) {
-        ventana.close()
+    // ------------------------- exportar e importar -------------------------
+    private func alerta(_ titulo: String, _ detalle: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alerta = NSAlert()
+        alerta.alertStyle = .warning
+        alerta.messageText = titulo
+        alerta.informativeText = detalle
+        alerta.addButton(withTitle: L("Aceptar"))
+        alerta.runModal()
+    }
+
+    @objc private func exportarAvisos(_ sender: Any?) {
+        guard let data = motor.exportarReglas() else {
+            alerta(L("No se pudieron exportar los avisos"),
+                   L("No hay ninguna regla que guardar."))
+            return
+        }
+        let panel = NSSavePanel()
+        panel.title = L("Exportar avisos")
+        panel.nameFieldStringValue = "Mirlo-avisos.json"
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        let terminar: (NSApplication.ModalResponse) -> Void = { [weak self] respuesta in
+            guard respuesta == .OK, let url = panel.url else { return }
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                self?.alerta(L("No se pudo guardar"), error.localizedDescription)
+            }
+        }
+        if let ventana = hostWindow?() {
+            panel.beginSheetModal(for: ventana, completionHandler: terminar)
+        } else {
+            terminar(panel.runModal())
+        }
+    }
+
+    @objc private func importarAvisos(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.title = L("Importar avisos")
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        let terminar: (NSApplication.ModalResponse) -> Void = { [weak self] respuesta in
+            guard let self = self, respuesta == .OK, let url = panel.url else { return }
+            guard let data = try? Data(contentsOf: url) else {
+                self.alerta(L("No se pudo leer el archivo"),
+                            L("Comprueba que el archivo existe y que puedes abrirlo."))
+                return
+            }
+            switch ArchivoAvisos.leer(data) {
+            case .failure(let error):
+                self.alerta(L("No se pudo importar"), error.descripcion)
+            case .success(let reglas):
+                let pregunta = NSAlert()
+                pregunta.messageText = L("¿Cómo quieres importar %d avisos?", reglas.count)
+                pregunta.informativeText = L(
+                    "Fusionar conserva los avisos actuales y añade los que no existan. Reemplazar sustituye todos por los del archivo."
+                )
+                pregunta.addButton(withTitle: L("Fusionar"))
+                pregunta.addButton(withTitle: L("Reemplazar"))
+                pregunta.addButton(withTitle: L("Cancelar"))
+                let eleccion = pregunta.runModal()
+                guard eleccion != .alertThirdButtonReturn else { return }
+                let fusionar = eleccion == .alertFirstButtonReturn
+                switch self.motor.importarReglas(data, fusionar: fusionar) {
+                case .failure(let error):
+                    self.alerta(L("No se pudo importar"), error.descripcion)
+                case .success(let cuantas):
+                    self.refresh()
+                    if cuantas == 0 {
+                        self.alerta(L("Avisos ya presentes"),
+                                    L("No había ninguna regla nueva que añadir."))
+                    }
+                }
+            }
+        }
+        if let ventana = hostWindow?() {
+            panel.beginSheetModal(for: ventana, completionHandler: terminar)
+        } else {
+            terminar(panel.runModal())
+        }
     }
 
     @objc private func accionPermiso(_ sender: NSButton) {
@@ -1086,6 +1311,7 @@ final class VentanaAvisos: NSObject, NSWindowDelegate {
             self.motor.setReglas(lista)
         }
         editor = e
+        guard let ventana = hostWindow?() ?? window else { return }
         ventana.beginSheet(e.panel) { [weak self] _ in self?.editor = nil }
     }
 }

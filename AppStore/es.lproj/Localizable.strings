@@ -408,3 +408,121 @@
 "Sin datos disponibles" = "Sin datos disponibles";
 "Idioma" = "Idioma";
 "Automático (sistema)" = "Automático (sistema)";
+
+// Campos de la gráfica por módulo
+"Temperatura" = "Temperatura";
+"Humedad" = "Humedad";
+"CO₂" = "CO₂";
+"Presión" = "Presión";
+"Ruido" = "Ruido";
+"Racha" = "Racha";
+"Sensor" = "Sensor";
+"Este Mac" = "Este Mac";
+"Exportar PNG" = "Exportar PNG";
+"Mantener encima" = "Mantener encima";
+
+// Ventana única de Ajustes
+"Barra y menú" = "Barra y menú";
+"Estaciones" = "Estaciones";
+"Inicio" = "Inicio";
+"Idioma de la app" = "Idioma de la app";
+"El cambio se aplica al menú y a las ventanas abiertas." = "El cambio se aplica al menú y a las ventanas abiertas.";
+"Barra de menús" = "Barra de menús";
+"Mostrar en la barra" = "Mostrar en la barra";
+"El valor elegido aparece junto al icono de Mirlo. «Solo el icono» deja la barra limpia." = "El valor elegido aparece junto al icono de Mirlo. «Solo el icono» deja la barra limpia.";
+"Resaltado" = "Resaltado";
+"Color" = "Color";
+"El resaltado se aplica a los bloques marcados del menú. El color de texto automático elige blanco o negro según el contraste." = "El resaltado se aplica a los bloques marcados del menú. El color de texto automático elige blanco o negro según el contraste.";
+"Conexión" = "Conexión";
+"Estaciones y módulos" = "Estaciones y módulos";
+"Estación pública" = "Estación pública";
+"Añadir o cambiar la estación pública" = "Añadir o cambiar la estación pública";
+"La estación pública aporta viento o lluvia cuando tu cuenta no tiene esos sensores. Netatmo solo permite leer sus datos; nunca se escribe en ella." = "La estación pública aporta viento o lluvia cuando tu cuenta no tiene esos sensores. Netatmo solo permite leer sus datos; nunca se escribe en ella.";
+"No hay ninguna estación pública guardada." = "No hay ninguna estación pública guardada.";
+"Todavía no hay módulos. Conecta la cuenta o espera a la primera lectura." = "Todavía no hay módulos. Conecta la cuenta o espera a la primera lectura.";
+"Sin módulos visibles." = "Sin módulos visibles.";
+"Servicio" = "Servicio";
+"Conexión con Netatmo" = "Conexión con Netatmo";
+"Dirección del servicio" = "Dirección del servicio";
+"El servicio es el Cloudflare Worker que habla con Netatmo. Restablecer borra la credencial local y pide volver a autorizar la cuenta." = "El servicio es el Cloudflare Worker que habla con Netatmo. Restablecer borra la credencial local y pide volver a autorizar la cuenta.";
+"Datos locales" = "Datos locales";
+"Historial de este Mac" = "Historial de este Mac";
+"Borra las muestras guardadas para la gráfica y las tendencias. Los avisos y sus reglas no se tocan." = "Borra las muestras guardadas para la gráfica y las tendencias. Los avisos y sus reglas no se tocan.";
+"Diagnóstico" = "Diagnóstico";
+"Informe para soporte" = "Informe para soporte";
+"Copia versión, modo, servicio, estado de la última lectura y número de módulos y avisos. No incluye tu credencial." = "Copia versión, modo, servicio, estado de la última lectura y número de módulos y avisos. No incluye tu credencial.";
+"Copiar diagnóstico" = "Copiar diagnóstico";
+"Sin cuenta de Netatmo. Los datos vienen de la estación pública elegida." = "Sin cuenta de Netatmo. Los datos vienen de la estación pública elegida.";
+"Sin conexión" = "Sin conexión";
+"Conecta tu cuenta de Netatmo para ver las estaciones y sus módulos." = "Conecta tu cuenta de Netatmo para ver las estaciones y sus módulos.";
+"Mi casa" = "Mi casa";
+"Aún no hay lecturas. La primera consulta rellenará esta lista." = "Aún no hay lecturas. La primera consulta rellenará esta lista.";
+"%d estaciones, %d módulos." = "%d estaciones, %d módulos.";
+"Cuenta de Netatmo" = "Cuenta de Netatmo";
+"Sin configurar" = "Sin configurar";
+"Diagnóstico copiado" = "Diagnóstico copiado";
+"Pégalo en el informe de un problema. No incluye tu credencial de Netatmo." = "Pégalo en el informe de un problema. No incluye tu credencial de Netatmo.";
+"Si la app está fuera de la carpeta Aplicaciones, muévela allí y vuelve a intentarlo." = "Si la app está fuera de la carpeta Aplicaciones, muévela allí y vuelve a intentarlo.";
+
+// Acciones de la fila de avisos
+"Acciones del aviso" = "Acciones del aviso";
+"Silenciar, editar o eliminar este aviso" = "Silenciar, editar o eliminar este aviso";
+
+// Onboarding con tarjetas
+"Conecta tu cuenta y lee todos tus sensores." = "Conecta tu cuenta y lee todos tus sensores.";
+"Sin cuenta, con estaciones públicas cercanas." = "Sin cuenta, con estaciones públicas cercanas.";
+
+// Tendencias
+"Temperatura interior con tendencia" = "Temperatura interior con tendencia";
+"en 30 min" = "en 30 min";
+"Tendencia de los últimos 30 minutos." = "Tendencia de los últimos 30 minutos.";
+
+// Estaciones
+"%@ (%@ km)" = "%1$@ (%2$@ km)";
+
+// Accesibilidad de la gráfica
+"Gráfica de %@ sin datos" = "Gráfica de %@ sin datos";
+"Gráfica de %@, último valor %@" = "Gráfica de %@, último valor %@";
+"Datos del histórico oficial de Netatmo de las últimas 24 horas." = "Datos del histórico oficial de Netatmo de las últimas 24 horas.";
+"Datos de las lecturas guardadas en este Mac durante las últimas 24 horas." = "Datos de las lecturas guardadas en este Mac durante las últimas 24 horas.";
+
+// Localidades guardadas y estación principal
+"Localidad" = "Localidad";
+"Añadir localidad…" = "Añadir localidad…";
+"Renombrar esta localidad…" = "Renombrar esta localidad…";
+"Quitar esta localidad…" = "Quitar esta localidad…";
+"Renombrar localidad" = "Renombrar localidad";
+"El nombre solo se usa en este Mac para reconocerla en el menú." = "El nombre solo se usa en este Mac para reconocerla en el menú.";
+"Nombre repetido" = "Nombre repetido";
+"Ya hay una localidad guardada con ese nombre." = "Ya hay una localidad guardada con ese nombre.";
+"¿Quitar «%@»?" = "¿Quitar «%@»?";
+"Se elimina de la lista guardada. No se borra ningún historial de lecturas." = "Se elimina de la lista guardada. No se borra ningún historial de lecturas.";
+"Estaciones públicas en %d km a la redonda" = "Estaciones públicas en %d km a la redonda";
+"Estación principal" = "Estación principal";
+"Automática (Netatmo)" = "Automática (Netatmo)";
+"Quitar" = "Quitar";
+
+// Avisos: exportar, importar y acciones de la notificación
+"Silenciar 1 h" = "Silenciar 1 h";
+"Abrir Mirlo" = "Abrir Mirlo";
+"Más" = "Más";
+"Exportar avisos" = "Exportar avisos";
+"Exportar avisos…" = "Exportar avisos…";
+"Importar avisos" = "Importar avisos";
+"Importar avisos…" = "Importar avisos…";
+"El archivo no tiene el formato de avisos de Mirlo Weather." = "El archivo no tiene el formato de avisos de Mirlo Weather.";
+"El archivo usa una versión (%d) que esta app no entiende." = "El archivo usa una versión (%d) que esta app no entiende.";
+"El archivo no contiene ninguna regla válida." = "El archivo no contiene ninguna regla válida.";
+"No se pudieron exportar los avisos" = "No se pudieron exportar los avisos";
+"No hay ninguna regla que guardar." = "No hay ninguna regla que guardar.";
+"No se pudo guardar" = "No se pudo guardar";
+"No se pudo leer el archivo" = "No se pudo leer el archivo";
+"Comprueba que el archivo existe y que puedes abrirlo." = "Comprueba que el archivo existe y que puedes abrirlo.";
+"No se pudo importar" = "No se pudo importar";
+"¿Cómo quieres importar %d avisos?" = "¿Cómo quieres importar %d avisos?";
+"Fusionar" = "Fusionar";
+"Reemplazar" = "Reemplazar";
+"Fusionar conserva los avisos actuales y añade los que no existan. Reemplazar sustituye todos por los del archivo." = "Fusionar conserva los avisos actuales y añade los que no existan. Reemplazar sustituye todos por los del archivo.";
+"Avisos ya presentes" = "Avisos ya presentes";
+"No había ninguna regla nueva que añadir." = "No había ninguna regla nueva que añadir.";
+"Copiar diagnóstico…" = "Copiar diagnóstico…";

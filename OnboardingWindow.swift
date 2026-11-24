@@ -28,12 +28,13 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
     private var seleccion: MKLocalSearchCompletion?
     private let tabla = NSTableView()
     private let scrollSugerencias = NSScrollView()
+    private var alturaSugerencias: NSLayoutConstraint!
     private var volverAlInicio = true
     private var buscando = false
 
     override init() {
         ventana = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 470, height: 430),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -57,16 +58,18 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         vistaInicio.frame = content.bounds
         vistaInicio.autoresizingMask = [.width, .height]
 
-        let icono = NSImageView(frame: NSRect(x: 207, y: 342, width: 56, height: 56))
+        let icono = NSImageView()
         icono.image = NSApp.applicationIconImage
         icono.imageScaling = .scaleProportionallyUpOrDown
-        vistaInicio.addSubview(icono)
+        icono.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icono.widthAnchor.constraint(equalToConstant: 60),
+            icono.heightAnchor.constraint(equalToConstant: 60),
+        ])
 
         let titulo = NSTextField(labelWithString: L("Bienvenido a Mirlo Weather"))
-        titulo.font = .systemFont(ofSize: 21, weight: .semibold)
+        titulo.font = .systemFont(ofSize: 24, weight: .semibold)
         titulo.alignment = .center
-        titulo.frame = NSRect(x: 30, y: 300, width: 410, height: 28)
-        vistaInicio.addSubview(titulo)
 
         let cuerpo = NSTextField(wrappingLabelWithString:
             L("Elige cómo quieres usar la app. Podrás cambiar de modo cuando quieras."))
@@ -74,31 +77,20 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         cuerpo.textColor = .secondaryLabelColor
         cuerpo.alignment = .center
         cuerpo.maximumNumberOfLines = 2
-        cuerpo.frame = NSRect(x: 46, y: 252, width: 378, height: 40)
-        vistaInicio.addSubview(cuerpo)
 
-        let botonCuenta = NSButton(
-            title: L("Tengo mi estación de Netatmo"),
-            target: self,
-            action: #selector(conectarPulsado)
+        let tarjetaCuenta = TarjetaOnboarding(
+            simbolo: "dot.radiowaves.left.and.right",
+            titulo: L("Tengo mi estación de Netatmo"),
+            subtitulo: L("Conecta tu cuenta y lee todos tus sensores."),
+            onClick: { [weak self] in self?.conectarPulsado() }
         )
-        botonCuenta.bezelStyle = .rounded
-        botonCuenta.controlSize = .large
-        botonCuenta.font = .systemFont(ofSize: 13, weight: .medium)
-        botonCuenta.frame = NSRect(x: 65, y: 198, width: 340, height: 38)
-        vistaInicio.addSubview(botonCuenta)
 
-        let botonLocalidad = NSButton(
-            title: L("Ver el tiempo de mi localidad"),
-            target: self,
-            action: #selector(localidadPulsado)
+        let tarjetaLocalidad = TarjetaOnboarding(
+            simbolo: "location",
+            titulo: L("Ver el tiempo de mi localidad"),
+            subtitulo: L("Sin cuenta, con estaciones públicas cercanas."),
+            onClick: { [weak self] in self?.localidadPulsado() }
         )
-        botonLocalidad.bezelStyle = .rounded
-        botonLocalidad.controlSize = .large
-        botonLocalidad.font = .systemFont(ofSize: 13, weight: .medium)
-        botonLocalidad.keyEquivalent = "\r"
-        botonLocalidad.frame = NSRect(x: 65, y: 152, width: 340, height: 38)
-        vistaInicio.addSubview(botonLocalidad)
 
         let nota = NSTextField(wrappingLabelWithString:
             L("Sin cuenta usaremos estaciones Netatmo públicas cercanas a la localidad que escribas. Solo se leen sus medidas; no se usa el GPS."))
@@ -106,13 +98,40 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         nota.textColor = .tertiaryLabelColor
         nota.alignment = .center
         nota.maximumNumberOfLines = 3
-        nota.frame = NSRect(x: 46, y: 92, width: 378, height: 46)
-        vistaInicio.addSubview(nota)
 
         let cerrar = NSButton(title: L("Ahora no"), target: self, action: #selector(cerrarPulsado))
         cerrar.bezelStyle = .inline
-        cerrar.frame = NSRect(x: 190, y: 52, width: 90, height: 26)
-        vistaInicio.addSubview(cerrar)
+
+        let hueco = NSView()
+        hueco.setContentHuggingPriority(.defaultLow, for: .vertical)
+        hueco.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+
+        let pila = NSStackView(views: [icono, titulo, cuerpo, tarjetaCuenta,
+                                       tarjetaLocalidad, nota, hueco, cerrar])
+        pila.orientation = .vertical
+        pila.alignment = .centerX
+        pila.spacing = 10
+        pila.translatesAutoresizingMaskIntoConstraints = false
+        pila.setCustomSpacing(14, after: icono)
+        pila.setCustomSpacing(6, after: titulo)
+        pila.setCustomSpacing(20, after: cuerpo)
+        pila.setCustomSpacing(10, after: tarjetaCuenta)
+        pila.setCustomSpacing(14, after: tarjetaLocalidad)
+        pila.setCustomSpacing(8, after: nota)
+        vistaInicio.addSubview(pila)
+
+        NSLayoutConstraint.activate([
+            pila.topAnchor.constraint(equalTo: vistaInicio.topAnchor, constant: 24),
+            pila.leadingAnchor.constraint(equalTo: vistaInicio.leadingAnchor, constant: 40),
+            pila.trailingAnchor.constraint(equalTo: vistaInicio.trailingAnchor, constant: -40),
+            pila.bottomAnchor.constraint(equalTo: vistaInicio.bottomAnchor, constant: -20),
+            tarjetaCuenta.widthAnchor.constraint(equalTo: pila.widthAnchor),
+            tarjetaLocalidad.widthAnchor.constraint(equalTo: pila.widthAnchor),
+            tarjetaCuenta.heightAnchor.constraint(equalToConstant: 84),
+            tarjetaLocalidad.heightAnchor.constraint(equalToConstant: 84),
+            nota.widthAnchor.constraint(lessThanOrEqualToConstant: 400),
+            cuerpo.widthAnchor.constraint(lessThanOrEqualToConstant: 400),
+        ])
 
         content.addSubview(vistaInicio)
     }
@@ -124,16 +143,18 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         vistaLocalidad.autoresizingMask = [.width, .height]
         vistaLocalidad.isHidden = true
 
-        let icono = NSImageView(frame: NSRect(x: 207, y: 344, width: 56, height: 56))
+        let icono = NSImageView()
         icono.image = NSApp.applicationIconImage
         icono.imageScaling = .scaleProportionallyUpOrDown
-        vistaLocalidad.addSubview(icono)
+        icono.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icono.widthAnchor.constraint(equalToConstant: 44),
+            icono.heightAnchor.constraint(equalToConstant: 44),
+        ])
 
         let titulo = NSTextField(labelWithString: L("¿Dónde quieres ver el tiempo?"))
-        titulo.font = .systemFont(ofSize: 19, weight: .semibold)
+        titulo.font = .systemFont(ofSize: 20, weight: .semibold)
         titulo.alignment = .center
-        titulo.frame = NSRect(x: 30, y: 304, width: 410, height: 26)
-        vistaLocalidad.addSubview(titulo)
 
         let cuerpo = NSTextField(wrappingLabelWithString:
             L("Escribe tu localidad y elige una de las sugerencias. Buscaremos estaciones Netatmo públicas cerca y elegiremos los datos más representativos."))
@@ -141,17 +162,15 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         cuerpo.textColor = .secondaryLabelColor
         cuerpo.alignment = .center
         cuerpo.maximumNumberOfLines = 3
-        cuerpo.frame = NSRect(x: 42, y: 252, width: 386, height: 44)
-        vistaLocalidad.addSubview(cuerpo)
 
         campo.font = .systemFont(ofSize: 14)
         campo.placeholderString = L("Tu localidad")
         campo.delegate = self
         campo.alignment = .center
-        campo.frame = NSRect(x: 65, y: 214, width: 340, height: 30)
         campo.target = self
         campo.action = #selector(buscarPulsado)
-        vistaLocalidad.addSubview(campo)
+        campo.translatesAutoresizingMaskIntoConstraints = false
+        campo.heightAnchor.constraint(equalToConstant: 28).isActive = true
 
         botonBuscar.title = L("Buscar estaciones")
         botonBuscar.bezelStyle = .rounded
@@ -159,46 +178,98 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         botonBuscar.keyEquivalent = "\r"
         botonBuscar.target = self
         botonBuscar.action = #selector(buscarPulsado)
-        botonBuscar.frame = NSRect(x: 65, y: 170, width: 340, height: 34)
-        vistaLocalidad.addSubview(botonBuscar)
 
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
-        spinner.frame = NSRect(x: 227, y: 140, width: 16, height: 16)
         spinner.isHidden = true
-        vistaLocalidad.addSubview(spinner)
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            spinner.widthAnchor.constraint(equalToConstant: 16),
+            spinner.heightAnchor.constraint(equalToConstant: 16),
+        ])
 
         estado.font = .systemFont(ofSize: 12)
         estado.textColor = .secondaryLabelColor
-        estado.alignment = .center
+        estado.alignment = .left
         estado.maximumNumberOfLines = 4
-        estado.frame = NSRect(x: 46, y: 82, width: 378, height: 54)
-        vistaLocalidad.addSubview(estado)
+
+        let filaEstado = NSStackView(views: [spinner, estado])
+        filaEstado.orientation = .horizontal
+        filaEstado.alignment = .centerY
+        filaEstado.spacing = 8
 
         botonVolver.title = L("Volver")
         botonVolver.bezelStyle = .inline
         botonVolver.target = self
         botonVolver.action = #selector(volverPulsado)
-        botonVolver.frame = NSRect(x: 190, y: 46, width: 90, height: 26)
-        vistaLocalidad.addSubview(botonVolver)
 
-        // Lista de sugerencias, encima del resto de controles.
+        let huecoArriba = NSView()
+        huecoArriba.setContentHuggingPriority(.defaultLow, for: .vertical)
+        huecoArriba.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        let huecoAbajo = NSView()
+        huecoAbajo.setContentHuggingPriority(.defaultLow, for: .vertical)
+        huecoAbajo.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+
+        let pila = NSStackView(views: [huecoArriba, icono, titulo, cuerpo, campo,
+                                       botonBuscar, filaEstado, huecoAbajo,
+                                       botonVolver])
+        pila.orientation = .vertical
+        pila.alignment = .centerX
+        pila.spacing = 10
+        pila.translatesAutoresizingMaskIntoConstraints = false
+        pila.setCustomSpacing(10, after: icono)
+        pila.setCustomSpacing(6, after: titulo)
+        pila.setCustomSpacing(18, after: cuerpo)
+        pila.setCustomSpacing(10, after: campo)
+        pila.setCustomSpacing(12, after: botonBuscar)
+        pila.setCustomSpacing(8, after: filaEstado)
+        vistaLocalidad.addSubview(pila)
+
+        NSLayoutConstraint.activate([
+            pila.topAnchor.constraint(equalTo: vistaLocalidad.topAnchor, constant: 26),
+            pila.leadingAnchor.constraint(equalTo: vistaLocalidad.leadingAnchor, constant: 52),
+            pila.trailingAnchor.constraint(equalTo: vistaLocalidad.trailingAnchor, constant: -52),
+            pila.bottomAnchor.constraint(equalTo: vistaLocalidad.bottomAnchor, constant: -20),
+            campo.widthAnchor.constraint(equalTo: pila.widthAnchor),
+            botonBuscar.widthAnchor.constraint(equalTo: pila.widthAnchor),
+            filaEstado.widthAnchor.constraint(equalTo: pila.widthAnchor),
+            cuerpo.widthAnchor.constraint(equalTo: pila.widthAnchor),
+        ])
+
+        // Lista de sugerencias: flota justo debajo del campo, por encima del
+        // resto de controles. Su altura se ajusta al número de resultados.
         let columna = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("sug"))
-        columna.width = 336
+        columna.width = 416
+        columna.resizingMask = .autoresizingMask
         tabla.addTableColumn(columna)
         tabla.headerView = nil
-        tabla.rowHeight = 34
+        tabla.rowHeight = 36
+        tabla.backgroundColor = .clear
         tabla.dataSource = self
         tabla.delegate = self
         tabla.target = self
         tabla.action = #selector(sugerenciaClic)
         scrollSugerencias.documentView = tabla
         scrollSugerencias.hasVerticalScroller = false
-        scrollSugerencias.borderType = .lineBorder
+        scrollSugerencias.borderType = .noBorder
+        scrollSugerencias.drawsBackground = true
+        scrollSugerencias.backgroundColor = .controlBackgroundColor
+        scrollSugerencias.wantsLayer = true
+        scrollSugerencias.layer?.cornerRadius = 8
+        scrollSugerencias.layer?.borderWidth = 0.5
+        scrollSugerencias.layer?.borderColor = NSColor.separatorColor.cgColor
         scrollSugerencias.isHidden = true
-        scrollSugerencias.frame = NSRect(x: 65, y: 214, width: 340, height: 0)
+        scrollSugerencias.translatesAutoresizingMaskIntoConstraints = false
         vistaLocalidad.addSubview(scrollSugerencias)
+
+        alturaSugerencias = scrollSugerencias.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            scrollSugerencias.leadingAnchor.constraint(equalTo: campo.leadingAnchor),
+            scrollSugerencias.trailingAnchor.constraint(equalTo: campo.trailingAnchor),
+            scrollSugerencias.topAnchor.constraint(equalTo: campo.bottomAnchor, constant: 2),
+            alturaSugerencias,
+        ])
 
         content.addSubview(vistaLocalidad)
     }
@@ -231,17 +302,19 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         guard ventana.isVisible, !vistaLocalidad.isHidden, !buscando,
               ventana.firstResponder === campo.currentEditor() else {
             sugerencias = []
+            alturaSugerencias.constant = 0
             scrollSugerencias.isHidden = true
             return
         }
         sugerencias = lista
         tabla.reloadData()
         if lista.isEmpty {
+            alturaSugerencias.constant = 0
             scrollSugerencias.isHidden = true
             return
         }
         let alto = CGFloat(lista.count) * tabla.rowHeight + 4
-        scrollSugerencias.frame = NSRect(x: 65, y: 214 - alto, width: 340, height: alto)
+        alturaSugerencias.constant = alto
         scrollSugerencias.isHidden = false
     }
 
@@ -271,6 +344,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
     private func elegir(_ s: MKLocalSearchCompletion) {
         seleccion = s
         campo.stringValue = s.title + ", " + s.subtitle
+        alturaSugerencias.constant = 0
         scrollSugerencias.isHidden = true
         sugerencias = []
         ventana.makeFirstResponder(campo)
@@ -293,6 +367,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
             }
             return false
         case #selector(NSResponder.cancelOperation(_:)):
+            alturaSugerencias.constant = 0
             scrollSugerencias.isHidden = true
             return true
         default:
@@ -318,6 +393,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         campo.stringValue = nombreActual ?? ""
         seleccion = nil
         sugerencias = []
+        alturaSugerencias.constant = 0
         scrollSugerencias.isHidden = true
         estado.stringValue = ""
         estado.textColor = .secondaryLabelColor
@@ -380,6 +456,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
         buscando = true
         actualizarControles()
         ponerEstado(L("Buscando «%@»…", texto))
+        alturaSugerencias.constant = 0
         scrollSugerencias.isHidden = true
         busquedaActiva?.cancel()
         let peticion: MKLocalSearch.Request
@@ -477,6 +554,186 @@ final class OnboardingWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate,
             }
         }
         return L("No se pudo buscar la localidad: %@", error.localizedDescription)
+    }
+}
+
+// ----------------------------- piezas del onboarding -----------------------------
+// Tarjeta pulsable. Es una vista con rol de botón: conserva el foco, el teclado
+// y la accesibilidad, pero dibuja solo el fondo y el borde que queremos.
+final class TarjetaOnboarding: NSView {
+    var onClick: (() -> Void)?
+    private let icono = NSImageView()
+    private let titulo = NSTextField(labelWithString: "")
+    private let subtitulo = NSTextField(wrappingLabelWithString: "")
+    private let flecha = NSImageView()
+    private var areaSeguimiento: NSTrackingArea?
+    private var encima = false {
+        didSet { actualizarFondo() }
+    }
+    private var enfocada = false {
+        didSet { actualizarFondo() }
+    }
+
+    init(
+        simbolo: String,
+        titulo texto: String,
+        subtitulo detalle: String,
+        onClick: @escaping () -> Void
+    ) {
+        super.init(frame: .zero)
+        self.onClick = onClick
+        toolTip = detalle
+        wantsLayer = true
+        layer?.cornerRadius = 12
+        layer?.borderWidth = 0.5
+        layer?.masksToBounds = true
+
+        icono.image = NSImage(systemSymbolName: simbolo, accessibilityDescription: nil)
+        icono.symbolConfiguration = NSImage.SymbolConfiguration(
+            pointSize: 26, weight: .regular
+        )
+        icono.contentTintColor = .controlAccentColor
+        icono.imageScaling = .scaleProportionallyDown
+        icono.translatesAutoresizingMaskIntoConstraints = false
+
+        titulo.stringValue = texto
+        titulo.font = .systemFont(ofSize: 14, weight: .semibold)
+        titulo.lineBreakMode = .byTruncatingTail
+        titulo.translatesAutoresizingMaskIntoConstraints = false
+
+        subtitulo.stringValue = detalle
+        subtitulo.font = .systemFont(ofSize: 11)
+        subtitulo.textColor = .secondaryLabelColor
+        subtitulo.lineBreakMode = .byTruncatingTail
+        subtitulo.translatesAutoresizingMaskIntoConstraints = false
+
+        flecha.image = NSImage(
+            systemSymbolName: "chevron.right",
+            accessibilityDescription: nil
+        )
+        flecha.symbolConfiguration = NSImage.SymbolConfiguration(
+            pointSize: 12, weight: .semibold
+        )
+        flecha.contentTintColor = .tertiaryLabelColor
+        flecha.translatesAutoresizingMaskIntoConstraints = false
+
+        for vista in [icono, titulo, subtitulo, flecha] {
+            addSubview(vista)
+        }
+        NSLayoutConstraint.activate([
+            icono.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            icono.centerYAnchor.constraint(equalTo: centerYAnchor),
+            icono.widthAnchor.constraint(equalToConstant: 30),
+            icono.heightAnchor.constraint(equalToConstant: 30),
+            titulo.leadingAnchor.constraint(equalTo: icono.trailingAnchor, constant: 14),
+            titulo.topAnchor.constraint(equalTo: topAnchor, constant: 20),
+            titulo.trailingAnchor.constraint(
+                lessThanOrEqualTo: flecha.leadingAnchor, constant: -12
+            ),
+            subtitulo.leadingAnchor.constraint(equalTo: titulo.leadingAnchor),
+            subtitulo.topAnchor.constraint(equalTo: titulo.bottomAnchor, constant: 3),
+            subtitulo.trailingAnchor.constraint(
+                lessThanOrEqualTo: flecha.leadingAnchor, constant: -12
+            ),
+            subtitulo.bottomAnchor.constraint(
+                lessThanOrEqualTo: bottomAnchor, constant: -18
+            ),
+            flecha.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            flecha.centerYAnchor.constraint(equalTo: centerYAnchor),
+            flecha.widthAnchor.constraint(equalToConstant: 10),
+            flecha.heightAnchor.constraint(equalToConstant: 14),
+        ])
+
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(texto)
+        setAccessibilityHelp(detalle)
+        actualizarFondo()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) no está disponible")
+    }
+
+    // Toda la tarjeta responde al clic, incluidas las etiquetas.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        return bounds.contains(local) ? self : nil
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func becomeFirstResponder() -> Bool {
+        enfocada = true
+        return super.becomeFirstResponder()
+    }
+
+    override func resignFirstResponder() -> Bool {
+        enfocada = false
+        return super.resignFirstResponder()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 49 {
+            activar()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        activar()
+        return true
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let areaSeguimiento { removeTrackingArea(areaSeguimiento) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        areaSeguimiento = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { encima = true }
+    override func mouseExited(with event: NSEvent) { encima = false }
+
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseUp(with event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        if bounds.contains(local) { activar() }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        actualizarFondo()
+    }
+
+    private func activar() {
+        onClick?()
+    }
+
+    private func actualizarFondo() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let fondo = encima
+                ? NSColor.controlAccentColor.withAlphaComponent(0.12)
+                : NSColor.controlBackgroundColor.withAlphaComponent(0.7)
+            layer?.backgroundColor = fondo.cgColor
+            let resaltada = encima || enfocada
+            let borde = resaltada
+                ? NSColor.controlAccentColor
+                : NSColor.separatorColor
+            layer?.borderColor = borde.withAlphaComponent(resaltada ? 0.9 : 0.6).cgColor
+            layer?.borderWidth = enfocada ? 1.5 : 1.0
+        }
     }
 }
 

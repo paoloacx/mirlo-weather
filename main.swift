@@ -10,6 +10,7 @@
 import Cocoa
 import CryptoKit
 import Security
+import UniformTypeIdentifiers
 import UserNotifications
 
 // ----------------------------- constantes -----------------------------
@@ -108,33 +109,117 @@ func leerHistorialGrafica(campo: String, horas: Double = 24) -> [(ts: Double, va
     return out
 }
 
-var CAMPOS_GRAFICA: [(clave: String, nombre: String)] {
-    [
-        ("exterior.temperatura", L("Temperatura exterior")),
-        ("interior.temperatura", L("Temperatura interior")),
-        ("exterior.humedad", L("Humedad exterior")),
-        ("interior.humedad", L("Humedad interior")),
-        ("interior.co2", L("CO₂ interior")),
-        ("interior.presion", L("Presión interior")),
-        ("interior.ruido", L("Ruido interior")),
-        ("termostato.temperatura", L("Temperatura del termostato")),
-        ("caldera.encendida", L("Caldera encendida")),
-        ("lluvia.24h", L("Lluvia en 24 h")),
-        ("lluvia.actual", L("Lluvia actual")),
-        ("viento.velocidad", L("Viento")),
-        ("viento.racha", L("Racha de viento")),
+struct CampoGrafica {
+    let clave: String
+    let nombre: String
+    // Nombre sin el grupo de estación, para el título de la ventana.
+    let nombreCorto: String
+    let unidad: String
+    let decimales: Int
+    // `id` del módulo en Netatmo. Vacío en los campos heredados y en la
+    // caldera, que no tienen serie propia en getmeasure.
+    let idModulo: String?
+    // Clave de la serie en la respuesta del Worker. En los campos heredados
+    // coincide con `clave` (`exterior.temperatura`); por módulo es el nombre
+    // corto (`temperatura`).
+    let serieRemota: String?
+    // Consulta antigua `modulo=` para los campos heredados.
+    let modulo: String?
+    let tipo: String
+    // «Mi casa · Exterior». Vacío en los campos heredados.
+    let grupo: String
+    let campoBase: String
+}
+
+// Campos heredados: los que no dependen de un módulo concreto (caldera,
+// tendencias y el modo localidad). En modo cuenta se sustituyen por el
+// catálogo real de `modulos`, pero siguen siendo el respaldo si aún no hay
+// lecturas.
+var CAMPOS_GRAFICA: [CampoGrafica] {
+    let legacy: [(clave: String, nombre: String, modulo: String?)] = [
+        ("exterior.temperatura", L("Temperatura exterior"), "exterior"),
+        ("interior.temperatura", L("Temperatura interior"), "interior"),
+        ("exterior.humedad", L("Humedad exterior"), "exterior"),
+        ("interior.humedad", L("Humedad interior"), "interior"),
+        ("interior.co2", L("CO₂ interior"), "interior"),
+        ("interior.presion", L("Presión interior"), "interior"),
+        ("interior.ruido", L("Ruido interior"), "interior"),
+        ("termostato.temperatura", L("Temperatura del termostato"), "termostato"),
+        ("caldera.encendida", L("Caldera encendida"), nil),
+        ("lluvia.24h", L("Lluvia en 24 h"), "lluvia"),
+        ("lluvia.actual", L("Lluvia actual"), nil),
+        ("viento.velocidad", L("Viento"), "viento"),
+        ("viento.racha", L("Racha de viento"), "viento"),
     ]
+    return legacy.map { item in
+        let info = campoAviso(item.clave)
+        let partes = item.clave.split(separator: ".").map(String.init)
+        return CampoGrafica(
+            clave: item.clave,
+            nombre: item.nombre,
+            nombreCorto: item.nombre,
+            unidad: info.unidad,
+            decimales: info.decimales,
+            idModulo: nil,
+            serieRemota: item.clave,
+            modulo: item.modulo,
+            tipo: partes.first ?? "otro",
+            grupo: "",
+            campoBase: partes.last ?? item.clave
+        )
+    }
 }
 
 final class VistaGrafica: NSView {
     var puntos: [(ts: Double, valor: Double)] = []
     var campo: String = "exterior.temperatura"
+    // Nombre, unidad y decimales del campo elegido. En la gráfica por módulo
+    // no coinciden con las claves heredadas de `campoAviso`.
+    var nombreCampo: String = ""
+    var unidadCampo: String = ""
+    var decimalesCampo: Int = 1
     var origen: String = "local"
     // Aclaración opcional del pie (por ejemplo, cuando Netatmo no publica
     // histórico del campo y solo hay muestras de este Mac).
     var nota: String = ""
 
+    private var definicion: CampoAviso {
+        let heredado = campoAviso(campo)
+        guard !nombreCampo.isEmpty else { return heredado }
+        return CampoAviso(
+            clave: campo,
+            nombre: nombreCampo,
+            unidad: unidadCampo,
+            decimales: decimalesCampo
+        )
+    }
+
     override var intrinsicContentSize: NSSize { NSSize(width: 336, height: 164) }
+
+    // La gráfica es un dibujo, no una jerarquía de controles. Para VoiceOver se
+    // expone como una imagen con un resumen hablado del campo y del último
+    // valor, y con la aclaración del pie como ayuda.
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .image }
+
+    override func accessibilityLabel() -> String? {
+        let info = definicion
+        guard let ultimo = puntos.last else {
+            return L("Gráfica de %@ sin datos", info.nombre)
+        }
+        let valor = fmtNum(ultimo.valor, info.decimales) + " " + info.unidad
+        return L("Gráfica de %@, último valor %@", info.nombre, valor)
+    }
+
+    override func accessibilityHelp() -> String? {
+        nota.isEmpty ? origenAccesible : nota
+    }
+
+    private var origenAccesible: String {
+        origen == "Netatmo"
+            ? L("Datos del histórico oficial de Netatmo de las últimas 24 horas.")
+            : L("Datos de las lecturas guardadas en este Mac durante las últimas 24 horas.")
+    }
 
     override func draw(_ r: NSRect) {
         // Márgenes: izquierda para los valores del eje Y, abajo para las horas
@@ -152,7 +237,7 @@ final class VistaGrafica: NSView {
         )
         let attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: NSColor.secondaryLabelColor,
-            .font: NSFont.systemFont(ofSize: 9),
+            .font: NSFont.systemFont(ofSize: bounds.width >= 640 ? 10 : 9),
         ]
 
         func dibujar(_ texto: String, x: CGFloat, centroY: CGFloat, derecha: Bool) {
@@ -164,8 +249,7 @@ final class VistaGrafica: NSView {
             )
         }
 
-        let info = campoAviso(campo)
-        let _ = info.unidad.isEmpty ? "" : " " + info.unidad
+        let info = definicion
 
         guard puntos.count >= 2 else {
             let titulo = origen == "Netatmo"
@@ -194,10 +278,11 @@ final class VistaGrafica: NSView {
         let rango = mx - mn
 
         NSColor.separatorColor.withAlphaComponent(0.55).setStroke()
+        let filas = area.height >= 220 ? 4 : 2
         let guia = NSBezierPath()
         guia.lineWidth = 1
-        for i in 0...2 {
-            let y = area.minY + area.height * CGFloat(i) / 2
+        for i in 0...filas {
+            let y = area.minY + area.height * CGFloat(i) / CGFloat(filas)
             guia.move(to: NSPoint(x: area.minX, y: y))
             guia.line(to: NSPoint(x: area.maxX, y: y))
         }
@@ -231,20 +316,35 @@ final class VistaGrafica: NSView {
         NSColor.controlAccentColor.setStroke()
         path.stroke()
 
-        // Etiquetas del eje Y: máximo, medio y mínimo.
-        for i in 0...2 {
-            let valor = mx - rango * Double(i) / 2
-            let y = area.maxY - area.height * CGFloat(i) / 2
+        // Etiquetas del eje Y: una por línea de guía.
+        for i in 0...filas {
+            let valor = mx - rango * Double(i) / Double(filas)
+            let y = area.maxY - area.height * CGFloat(i) / CGFloat(filas)
             dibujar(fmtNum(valor, info.decimales),
                     x: area.minX - 5, centroY: y, derecha: true)
         }
-        // Etiquetas del eje X.
-        dibujar("−24 h", x: area.minX, centroY: area.minY - altoHoras / 2, derecha: false)
-        let medio = "−12 h" as NSString
-        let tamMedio = medio.size(withAttributes: attrs)
-        dibujar("−12 h", x: area.midX - tamMedio.width / 2,
-                centroY: area.minY - altoHoras / 2, derecha: false)
-        dibujar(L("ahora"), x: area.maxX, centroY: area.minY - altoHoras / 2, derecha: true)
+        // Etiquetas del eje X: cada 12 h en ventanas pequeñas, cada 6 o 3 h
+        // cuando hay ancho suficiente para que no se pisen.
+        let pasoHoras = area.width >= 860 ? 3 : (area.width >= 560 ? 6 : 12)
+        var hora = -24
+        while hora <= 0 {
+            let x = area.minX + CGFloat(Double(hora + 24) / 24) * area.width
+            let texto = hora == 0 ? L("ahora") : "−\(-hora) h"
+            let tam = (texto as NSString).size(withAttributes: attrs)
+            let px: CGFloat
+            if hora == -24 {
+                px = x
+            } else if hora == 0 {
+                px = x - tam.width
+            } else {
+                px = x - tam.width / 2
+            }
+            (texto as NSString).draw(
+                at: NSPoint(x: px, y: area.minY - altoHoras / 2 - tam.height / 2),
+                withAttributes: attrs
+            )
+            hora += pasoHoras
+        }
 
         let pie = (origen == "Netatmo" ? "Netatmo" : L("local"))
             + " · " + L("%d muestras", puntos.count)
@@ -371,6 +471,14 @@ struct Config {
     // ventana de bienvenida con las dos vías.
     var modo: String = ""
     var localidad: LocalidadConfig?
+    // Localidades guardadas (hasta 5). `localidad` es la activa; esta lista
+    // permite cambiar sin repetir la búsqueda de bienvenida.
+    var localidades: [LocalidadConfig] = []
+    // Estación principal en cuentas con varias. Vacío = la que elija Netatmo.
+    var estacionPrincipal: String = ""
+    // Verdadero si `load` ha tenido que completar la lista de localidades.
+    // No se guarda: solo sirve para persistir la migración al arrancar.
+    var migrada = false
     #if !APPSTORE
     var autoUpdate: Bool = true
     var notifiedUpdate: String = ""
@@ -382,6 +490,12 @@ struct Config {
     var highlightTextColor: String = "auto"
     var highlightItems: [String] = ["exterior", "interior", "caldera"]
     var graphField: String = "exterior.temperatura"
+    // Sección elegida en la ventana única de Ajustes (general, barra,
+    // estaciones, avisos o avanzado). Se restaura al volver a abrirla.
+    var ajustesSection: String = "general"
+    // La ventana de la gráfica se mantiene por encima del resto solo si el
+    // usuario lo pide con el botón de la barra de herramientas.
+    var graficaFlotante: Bool = false
     // "auto", "es" o "en".
     var idioma: String = "auto"
     var loginItemInit: Bool = false
@@ -406,6 +520,10 @@ struct Config {
             c.favorito = FavoritoPublico.desde(d["favorito_publico"])
             c.modo = d["modo"] as? String ?? ""
             c.localidad = LocalidadConfig.desde(d["localidad"])
+            if let lista = d["localidades"] as? [[String: Any]] {
+                c.localidades = lista.compactMap { LocalidadConfig.desde($0) }
+            }
+            c.estacionPrincipal = (d["estacion_principal"] as? String) ?? ""
             if c.modo != "cuenta" && c.modo != "localidad" {
                 // Configuraciones anteriores no tienen «modo»: si ya había
                 // una cuenta conectada, se mantiene el modo de siempre.
@@ -444,6 +562,8 @@ struct Config {
                 c.highlightItems = []
             }
             c.graphField = d["grafica_campo"] as? String ?? "exterior.temperatura"
+            c.ajustesSection = d["ajustes_seccion"] as? String ?? "general"
+            c.graficaFlotante = (d["grafica_flotante"] as? Bool) ?? false
             if let a = d["avisos"] as? [String: Any] {
                 c.avisos = ConfigAvisos.desde(a)
             }
@@ -454,6 +574,10 @@ struct Config {
         if c.installationId.isEmpty {
             c.installationId = UUID().uuidString.lowercased()
         }
+        // Migración: la localidad activa siempre forma parte de la lista.
+        if migrarLocalidades(activa: c.localidad, lista: &c.localidades) {
+            c.migrada = true
+        }
         if !c.loginItemInit {
             c.loginItemInit = true
             if !LoginItem.isEnabled {
@@ -462,6 +586,19 @@ struct Config {
         }
         c.save()
         return c
+    }
+
+    // Guarda (o reemplaza por nombre) una localidad y la deja como activa.
+    mutating func guardarLocalidad(_ nueva: LocalidadConfig) {
+        if let indice = localidades.firstIndex(where: { $0.nombre == nueva.nombre }) {
+            localidades[indice] = nueva
+        } else {
+            localidades.insert(nueva, at: 0)
+        }
+        if localidades.count > 5 {
+            localidades = Array(localidades.prefix(5))
+        }
+        localidad = nueva
     }
 
     func save() {
@@ -477,6 +614,8 @@ struct Config {
             "texto_destacado": highlightTextColor,
             "destacar_items": highlightItems,
             "grafica_campo": graphField,
+            "grafica_flotante": graficaFlotante,
+            "ajustes_seccion": ajustesSection,
             "idioma": idioma,
             "login_item_init": loginItemInit,
             "avisos": avisos.diccionario,
@@ -489,6 +628,8 @@ struct Config {
         if let localidad = localidad {
             d["localidad"] = localidad.diccionario
         }
+        d["localidades"] = localidades.map { $0.diccionario }
+        d["estacion_principal"] = estacionPrincipal
         if let favorito = favorito {
             d["favorito_publico"] = favorito.diccionario
         }
@@ -728,7 +869,14 @@ func codigoError(_ resultado: HTTPResult) -> String {
 // ------------------------- notificaciones -------------------------
 final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationPresenter()
+    static let categoriaAviso = "MIRLO_AVISO"
+    static let accionSilenciar = "MIRLO_SILENCIAR_1H"
+    static let accionAbrir = "MIRLO_ABRIR"
     var onOpenSettings: (() -> Void)?
+    // Silenciar una regla concreta desde la propia notificación.
+    var onSilenciar: ((String) -> Void)?
+    // Abrir el menú de la barra desde la notificación.
+    var onAbrir: (() -> Void)?
     private(set) var permiso: UNAuthorizationStatus = .notDetermined
     private var prepared = false
 
@@ -737,6 +885,22 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
         prepared = true
         let center = UNUserNotificationCenter.current()
         center.delegate = self
+        let silenciar = UNNotificationAction(
+            identifier: Self.accionSilenciar,
+            title: L("Silenciar 1 h")
+        )
+        let abrir = UNNotificationAction(
+            identifier: Self.accionAbrir,
+            title: L("Abrir Mirlo")
+        )
+        center.setNotificationCategories([
+            UNNotificationCategory(
+                identifier: Self.categoriaAviso,
+                actions: [silenciar, abrir],
+                intentIdentifiers: [],
+                options: []
+            )
+        ])
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in
             self.refrescarPermiso(nil)
         }
@@ -761,12 +925,16 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
     // Devuelve false si el sistema no permite notificaciones: el motor de
     // avisos usa entonces sonido + aviso visible en el menú.
     @discardableResult
-    func enviar(titulo: String, cuerpo: String) -> Bool {
+    func enviar(titulo: String, cuerpo: String, reglaId: String? = nil) -> Bool {
         guard permiso == .authorized || permiso == .provisional else { return false }
         let content = UNMutableNotificationContent()
         content.title = titulo
         content.body = cuerpo
         content.sound = .default
+        if let reglaId = reglaId {
+            content.categoryIdentifier = Self.categoriaAviso
+            content.userInfo = ["regla": reglaId]
+        }
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,
             content: content,
@@ -811,8 +979,15 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let info = response.notification.request.content.userInfo
         if response.notification.request.identifier.hasPrefix("mirlo-update") {
             DispatchQueue.main.async { self.onOpenSettings?() }
+        } else if response.actionIdentifier == Self.accionSilenciar,
+                  let id = info["regla"] as? String {
+            DispatchQueue.main.async { self.onSilenciar?(id) }
+        } else if response.actionIdentifier == Self.accionAbrir
+                    || response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            DispatchQueue.main.async { self.onAbrir?() }
         }
         completionHandler()
     }
@@ -832,6 +1007,7 @@ var VALORES_BARRA: [(String, String)] {
     [
         ("exterior", L("Temperatura exterior")),
         ("interior", L("Temperatura interior")),
+        ("interior_tendencia", L("Temperatura interior con tendencia")),
         ("minmax", L("Min/Max de hoy (exterior)")),
         ("humedad_ext", L("Humedad exterior")),
         ("humedad_int", L("Humedad interior")),
@@ -1054,6 +1230,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cfg = Config.load()
     private var credential: String?
     private var datos: [String: Any]?
+    // Respuesta tal cual del servicio. Se guarda para poder cambiar de
+    // estación principal sin esperar a otra consulta.
+    private var datosBrutos: [String: Any]?
+    // Cambia al cambiar de localidad para descartar respuestas antiguas.
+    private var generacionLocalidad = 0
     private var lastSuccess: Date?
     private var lastAttempt: Date?
     private var lastError: String?
@@ -1077,7 +1258,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var avisoPendienteTimer: Timer?
     private var avisoBarraHasta: Date?
     private var avisoBarraTimer: Timer?
-    private var ventanaAvisos: VentanaAvisos?
 
     private lazy var motorAvisos: MotorAvisos = {
         let motor = MotorAvisos(config: cfg.avisos)
@@ -1118,6 +1298,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var vistaGrafica = VistaGrafica(frame: NSRect(x: 0, y: 0, width: 336, height: 164))
     private var ventanaGrafica: NSWindow?
     private var popupGrafica: NSPopUpButton?
+    // true si el sistema recordó tamaño y posición de la gráfica; entonces no
+    // se recoloca debajo del icono de la barra al abrirla.
+    private var graficaRestaurada = false
     private var camposGraficaClaves: [String] = []
     // Histórico oficial de Netatmo (getmeasure) por campo. Si aún no hay
     // respuesta para un campo, la gráfica usa el historial local.
@@ -1171,7 +1354,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         _ = motorAvisos
         buildStatusItem()
         buildMenu()
+        instalarAtajosLocales()
         updateMenu()
+        if cfg.migrada { cfg.save() }
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -1185,6 +1370,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NotificationPresenter.shared.onOpenSettings = { [weak self] in
             self?.mostrarAjustes(nil)
+        }
+        NotificationPresenter.shared.onSilenciar = { [weak self] id in
+            guard let self = self else { return }
+            self.motorAvisos.silenciarRegla(
+                id, hasta: Date().timeIntervalSince1970 + 3600)
+            self.settingsWindow?.refrescarAvisos()
+        }
+        NotificationPresenter.shared.onAbrir = { [weak self] in
+            self?.statusItem.button?.performClick(nil)
         }
         #if !APPSTORE
         scheduleUpdateChecks()
@@ -1481,6 +1675,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         subAvanzado.addItem(itConectarCuenta)
         subAvanzado.addItem(itCambiarServicio)
         subAvanzado.addItem(itRestablecer)
+        let itDiagnostico = NSMenuItem(
+            title: L("Copiar diagnóstico…"),
+            action: #selector(copiarDiagnosticoObjc(_:)),
+            keyEquivalent: ""
+        )
+        itDiagnostico.target = self
+        subAvanzado.addItem(.separator())
+        subAvanzado.addItem(itDiagnostico)
         itAvanzado.submenu = subAvanzado
         itAvanzado.isHidden = true
         menu.addItem(itAvanzado)
@@ -1535,6 +1737,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // ------------------------- menú: cuenta Netatmo -------------------------
     private func actualizarMenuCuenta() {
         itCambiarLocalidad.isHidden = true
+        if itCambiarLocalidad.submenu != nil {
+            itCambiarLocalidad.submenu = nil
+            itCambiarLocalidad.action = #selector(cambiarLocalidad(_:))
+            itCambiarLocalidad.title = L("Cambiar localidad…")
+        }
         itElegirEstaciones.isHidden = true
         itUsarLocalidad.isHidden = false
         itConectarCuenta.isHidden = true
@@ -1599,6 +1806,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let extTemp = fmtTemp(ext?["temperatura"])
             let extHum = fmtPct(ext?["humedad"])
             itExterior.title = L("Exterior: %@ · %@", extTemp, extHum)
+                + tendenciaMenu("exterior.temperatura", actual: num(ext?["temperatura"]))
             if let min = num(ext?["min"]), let max = num(ext?["max"]) {
                 let horas = [ext?["min_hora"], ext?["max_hora"]]
                     .compactMap { $0 as? String }
@@ -1610,6 +1818,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
 
             itInterior.title = L("Interior: %@ · %@", fmtTemp(inte?["temperatura"]), fmtPct(inte?["humedad"]))
+                + tendenciaMenu("interior.temperatura", actual: num(inte?["temperatura"]))
             var extras: [String] = []
             if let co2 = num(inte?["co2"]) { extras.append("CO₂ \(fmtNum(co2, 0)) ppm") }
             if let ruido = num(inte?["ruido"]) { extras.append(L("Ruido %@ dB", fmtNum(ruido, 0))) }
@@ -1709,6 +1918,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let datos = datos {
             let ext = datos["exterior"] as? [String: Any]
             itExterior.title = L("Exterior: %@ · %@", fmtTemp(ext?["temperatura"]), fmtPct(ext?["humedad"]))
+                + tendenciaMenu("exterior.temperatura", actual: num(ext?["temperatura"]))
             if let presion = num(ext?["presion"]) {
                 itExtMinMax.title = L("Presión: %@ mbar", fmtNum(presion, 0))
             } else {
@@ -1770,6 +1980,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             itFuenteLocalidad.toolTip = avisoLocalidad
             itFuenteLocalidad.isHidden = false
         }
+
+        reconstruirSubmenuLocalidades()
     }
 
     private func finalizarMenu() {
@@ -1802,6 +2014,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         aplicarColorDestacado()
         // La ventana de la gráfica se actualiza sola mientras está abierta.
         if ventanaGrafica?.isVisible == true { actualizarGrafica() }
+        // La sección Estaciones se mantiene al día si Ajustes está abierto.
+        if settingsWindow?.isVisible == true {
+            settingsWindow?.actualizarEstaciones(resumenEstacionesAjustes())
+        }
         updateBarTitle()
     }
 
@@ -1945,6 +2161,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // Tendencia de temperatura de los últimos 30 min. Sin historial suficiente
+    // (o con un cambio menor de 0,1°) devuelve una cadena vacía: nunca se
+    // inventa una flecha.
+    private func tendenciaMenu(_ campo: String, actual: Double?) -> String {
+        guard let actual = actual,
+              let cambio = motorAvisos.tendencia(campo, actual: actual, ventanaMin: 30),
+              abs(cambio) >= 0.1 else { return "" }
+        let flecha = cambio > 0 ? "↑" : "↓"
+        return " \(flecha)\(fmtNum(abs(cambio), 1))° \(L("en 30 min"))"
+    }
+
+    private func tendenciaBarra(_ campo: String, actual: Double?) -> String {
+        guard let actual = actual,
+              let cambio = motorAvisos.tendencia(campo, actual: actual, ventanaMin: 30),
+              abs(cambio) >= 0.1 else { return "" }
+        let flecha = cambio > 0 ? "↑" : "↓"
+        return " \(flecha)\(fmtNum(abs(cambio), 1))°"
+    }
+
     private func updateBarTitle() {
         updateStatusIcon()
         if avisoBarraHasta != nil {
@@ -1953,6 +2188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         actualizarIconoCaldera()
+        statusItem.button?.toolTip = nil
         guard activo, let datos = datos else {
             statusItem.button?.title = "--"
             return
@@ -1963,6 +2199,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch cfg.barValue {
         case "interior":
             statusItem.button?.title = fmtTemp(inte?["temperatura"])
+        case "interior_tendencia":
+            statusItem.button?.title = fmtTemp(inte?["temperatura"])
+                + tendenciaBarra("interior.temperatura",
+                                 actual: num(inte?["temperatura"]))
+            statusItem.button?.toolTip = L("Tendencia de los últimos 30 minutos.")
         case "minmax":
             if let min = num(ext?["min"]), let max = num(ext?["max"]) {
                 statusItem.button?.title = "\(fmtTemp(min))/\(fmtTemp(max))"
@@ -2103,6 +2344,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return (texto, L("Datos públicos de %@", favorito.etiqueta))
     }
 
+    // Sustituye las lecturas principales (interior y exterior) por las de la
+    // estación elegida en Ajustes. El termostato y la caldera no dependen de
+    // esta selección.
+    private func datosConEstacionPrincipal(_ json: [String: Any]) -> [String: Any] {
+        guard cfg.modo == "cuenta" else { return json }
+        return aplicarEstacionPrincipal(json, estacion: cfg.estacionPrincipal)
+    }
+
     private func renderModulos(
         _ modulos: [[String: Any]],
         tieneExteriorHeredado: Bool
@@ -2111,29 +2360,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var interior: [[String: Any]] = []
         var otras: [[String: Any]] = []
 
-        var principalHeredadoSaltado = false
-        var exteriorHeredadoSaltado = false
-        let estacionPrincipal = modulos
-            .first { ($0["principal"] as? Bool) == true }
-            .flatMap { $0["estacion"] as? String }
+        var interiorSaltado = false
+        var exteriorSaltado = false
+        // La estación elegida manda; si ya no existe, se usa la de Netatmo.
+        let nombres = Set(modulos.compactMap { $0["estacion"] as? String })
+        let elegida = nombres.contains(cfg.estacionPrincipal)
+            ? cfg.estacionPrincipal
+            : ""
+        let estacionPrincipal = elegida.isEmpty
+            ? (modulos.first { ($0["principal"] as? Bool) == true }
+                .flatMap { $0["estacion"] as? String } ?? "")
+            : elegida
+        let hayNombre = !estacionPrincipal.isEmpty
 
         for modulo in modulos {
             let esPrincipal = (modulo["principal"] as? Bool) == true
-            if esPrincipal && !principalHeredadoSaltado {
-                // La primera estación principal ya se muestra como "Interior".
-                principalHeredadoSaltado = true
-                continue
-            }
-            let tipo = modulo["tipo"] as? String ?? "otro"
-            if tipo == "exterior" && tieneExteriorHeredado && !exteriorHeredadoSaltado {
-                exteriorHeredadoSaltado = true
-                continue
-            }
-
             let estacion = modulo["estacion"] as? String ?? ""
-            let esOtra = esPrincipal
-                || (!(estacionPrincipal ?? "").isEmpty
-                    && estacion != (estacionPrincipal ?? ""))
+            let esDePrincipal = hayNombre ? estacion == estacionPrincipal : esPrincipal
+            let esOtra = hayNombre ? !esDePrincipal : esPrincipal
+            let tipo = modulo["tipo"] as? String ?? "otro"
+
+            if esDePrincipal && tipo == "interior" && !interiorSaltado {
+                // La estación principal ya se muestra como "Interior".
+                interiorSaltado = true
+                continue
+            }
+            if esDePrincipal && tipo == "exterior" && tieneExteriorHeredado
+                && !exteriorSaltado {
+                exteriorSaltado = true
+                continue
+            }
             if esOtra {
                 otras.append(modulo)
             } else if tipo == "exterior" || tipo == "viento" || tipo == "lluvia" {
@@ -2526,13 +2782,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshing = true
         lastAttempt = Date()
         if manual { updateMenu() }
+        // Si el usuario cambia de localidad mientras hay una consulta en
+        // marcha, la respuesta antigua se descarta en vez de pisar los datos.
+        let generacion = generacionLocalidad
 
         buscarAlrededor(
             lat: localidad.lat,
             lon: localidad.lon,
             radio: localidad.radioKm
         ) { [weak self] resultado in
-            guard let self = self else { return }
+            guard let self = self, generacion == self.generacionLocalidad else { return }
             self.refreshing = false
             switch resultado {
             case .success(let estaciones):
@@ -2595,7 +2854,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             localidad.lluviaId = seleccion.lluvia
         }
         cfg.modo = "localidad"
-        cfg.localidad = localidad
+        cfg.guardarLocalidad(localidad)
         if cfg.serviceUrl.isEmpty { cfg.serviceUrl = DEFAULT_SERVICE_URL }
         if !["exterior", "humedad_ext", "viento", "lluvia", "ninguno"]
             .contains(cfg.barValue) {
@@ -2618,6 +2877,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lastError = nil
         needsReconnect = false
         refreshing = false
+        generacionLocalidad += 1
         updateMenu()
         startPolling()
         completion?(.success(estaciones.count))
@@ -2901,7 +3161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 DispatchQueue.main.async {
                     self.refreshing = false
                     if (200..<300).contains(result.status), let json = result.json {
-                        self.datos = json
+                        self.datosBrutos = json
+                        self.datos = self.datosConEstacionPrincipal(json)
                         self.lastSuccess = Date()
                         self.lastError = nil
                         self.needsReconnect = false
@@ -2996,6 +3257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.cfg.installationId = UUID().uuidString.lowercased()
                 self.cfg.save()
                 self.datos = nil
+                self.datosBrutos = nil
                 self.lastSuccess = nil
                 self.lastError = nil
                 self.needsReconnect = false
@@ -3022,6 +3284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         cfg.installationId = UUID().uuidString.lowercased()
         cfg.save()
         datos = nil
+        datosBrutos = nil
         lastSuccess = nil
         lastError = nil
         needsReconnect = false
@@ -3191,6 +3454,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.pending = nil
                     self.connecting = false
                     self.datos = nil
+                    self.datosBrutos = nil
                     self.lastSuccess = nil
                     self.lastError = nil
                     self.needsReconnect = false
@@ -3241,6 +3505,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // ------------------------- acciones -------------------------
+    // El menú de la barra ya declara ⌘, y ⌘R, pero esos atajos solo llegan a la
+    // app mientras el menú está abierto. Este monitor los atiende también
+    // cuando hay una ventana de Mirlo en primer plano (Ajustes, gráfica…) y
+    // permite cerrar la gráfica con Esc.
+    private func instalarAtajosLocales() {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] evento in
+            guard let self = self else { return evento }
+            let cmd = evento.modifierFlags.contains(.command)
+            if cmd, let tecla = evento.charactersIgnoringModifiers?.lowercased() {
+                if tecla == "," {
+                    self.mostrarAjustes(nil)
+                    return nil
+                }
+                if tecla == "r" {
+                    self.actualizarAhora(nil)
+                    return nil
+                }
+            }
+            if evento.keyCode == 53,
+               let ventana = self.ventanaGrafica,
+               ventana.isVisible,
+               ventana.attachedSheet == nil,
+               NSApp.keyWindow === ventana {
+                ventana.orderOut(nil)
+                return nil
+            }
+            return evento
+        }
+    }
+
     @objc private func actualizarAhora(_ sender: Any?) {
         if activo {
             refresh(manual: true)
@@ -3258,55 +3552,142 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // ------------------------- gráfica 24 h -------------------------
     // La gráfica vive en su propia ventana flotante para poder cambiar de
-    // campo (viento, temperatura, lluvia…) sin que se cierre el cuadro.
+    // campo (viento, temperatura, lluvia…) sin que se cierre el cuadro. Se
+    // redimensiona como cualquier ventana y recuerda tamaño y posición.
     private func construirVentanaGrafica() {
         let ventana = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 250),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         ventana.title = L("Gráfica 24 h")
         ventana.isReleasedWhenClosed = false
-        ventana.level = .floating
+        ventana.minSize = NSSize(width: 380, height: 260)
+        ventana.level = cfg.graficaFlotante ? .floating : .normal
         ventana.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        ventana.setFrameAutosaveName("MirloGrafica")
+        graficaRestaurada = ventana.setFrameUsingName("MirloGrafica")
 
-        let contenido = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 250))
+        let contenido = NSView(frame: NSRect(x: 0, y: 0, width: 560, height: 380))
         ventana.contentView = contenido
 
-        vistaGrafica.frame = NSRect(x: 12, y: 66, width: 336, height: 164)
-        vistaGrafica.autoresizingMask = [.width]
-        contenido.addSubview(vistaGrafica)
+        vistaGrafica.translatesAutoresizingMaskIntoConstraints = false
+        vistaGrafica.setContentHuggingPriority(.defaultLow, for: .vertical)
+        vistaGrafica.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        vistaGrafica.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        vistaGrafica.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let etiqueta = NSTextField(labelWithString: L("Campo"))
         etiqueta.font = NSFont.systemFont(ofSize: 11)
         etiqueta.textColor = .secondaryLabelColor
-        etiqueta.frame = NSRect(x: 14, y: 39, width: 44, height: 18)
-        contenido.addSubview(etiqueta)
+        etiqueta.setContentHuggingPriority(.required, for: .horizontal)
 
-        let popup = NSPopUpButton(
-            frame: NSRect(x: 60, y: 34, width: 288, height: 26),
-            pullsDown: false
-        )
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
         popup.font = NSFont.systemFont(ofSize: 12)
-        popup.addItems(withTitles: CAMPOS_GRAFICA.map { $0.nombre })
         popup.target = self
         popup.action = #selector(cambiarCampoGrafica(_:))
-        popup.autoresizingMask = [.width]
-        contenido.addSubview(popup)
+        popup.setContentHuggingPriority(.defaultLow, for: .horizontal)
         popupGrafica = popup
 
-        let boton = NSButton(
+        let pin = NSButton()
+        pin.bezelStyle = .texturedRounded
+        pin.setButtonType(.toggle)
+        pin.image = NSImage(
+            systemSymbolName: "pin",
+            accessibilityDescription: L("Mantener encima")
+        )
+        pin.state = cfg.graficaFlotante ? .on : .off
+        pin.target = self
+        pin.action = #selector(alternarPinGrafica(_:))
+        pin.toolTip = L("Mantener encima")
+        pin.imagePosition = .imageOnly
+        pin.setAccessibilityLabel(L("Mantener encima"))
+        pin.setContentHuggingPriority(.required, for: .horizontal)
+
+        let exportar = NSButton()
+        exportar.bezelStyle = .texturedRounded
+        exportar.image = NSImage(
+            systemSymbolName: "square.and.arrow.up",
+            accessibilityDescription: L("Exportar PNG")
+        )
+        exportar.target = self
+        exportar.action = #selector(exportarGrafica(_:))
+        exportar.toolTip = L("Exportar PNG")
+        exportar.imagePosition = .imageOnly
+        exportar.setAccessibilityLabel(L("Exportar PNG"))
+        exportar.setContentHuggingPriority(.required, for: .horizontal)
+
+        let barra = NSStackView(views: [etiqueta, popup, pin, exportar])
+        barra.orientation = .horizontal
+        barra.spacing = 8
+        barra.alignment = .centerY
+        barra.distribution = .fill
+        barra.translatesAutoresizingMaskIntoConstraints = false
+
+        let borrar = NSButton(
             title: L("Borrar historial local…"),
             target: self,
             action: #selector(borrarHistorial(_:))
         )
-        boton.bezelStyle = .rounded
-        boton.font = NSFont.systemFont(ofSize: 11)
-        boton.frame = NSRect(x: 12, y: 5, width: 180, height: 24)
-        contenido.addSubview(boton)
+        borrar.bezelStyle = .inline
+        borrar.font = NSFont.systemFont(ofSize: 11)
+        borrar.setContentHuggingPriority(.required, for: .horizontal)
+
+        let pie = NSStackView(views: [borrar])
+        pie.orientation = .horizontal
+        pie.spacing = 8
+        pie.alignment = .centerY
+        pie.translatesAutoresizingMaskIntoConstraints = false
+
+        let pila = NSStackView(views: [barra, vistaGrafica, pie])
+        pila.orientation = .vertical
+        pila.spacing = 10
+        pila.alignment = .leading
+        pila.distribution = .fill
+        pila.translatesAutoresizingMaskIntoConstraints = false
+        contenido.addSubview(pila)
+
+        NSLayoutConstraint.activate([
+            pila.topAnchor.constraint(equalTo: contenido.topAnchor, constant: 12),
+            pila.leadingAnchor.constraint(equalTo: contenido.leadingAnchor, constant: 14),
+            pila.trailingAnchor.constraint(equalTo: contenido.trailingAnchor, constant: -14),
+            pila.bottomAnchor.constraint(equalTo: contenido.bottomAnchor, constant: -12),
+
+            barra.widthAnchor.constraint(equalTo: pila.widthAnchor),
+            vistaGrafica.widthAnchor.constraint(equalTo: pila.widthAnchor),
+            vistaGrafica.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            pie.widthAnchor.constraint(equalTo: pila.widthAnchor),
+        ])
 
         ventanaGrafica = ventana
+    }
+
+    @objc private func alternarPinGrafica(_ sender: NSButton) {
+        cfg.graficaFlotante = sender.state == .on
+        cfg.save()
+        ventanaGrafica?.level = cfg.graficaFlotante ? .floating : .normal
+        if cfg.graficaFlotante {
+            ventanaGrafica?.orderFrontRegardless()
+        }
+    }
+
+    @objc private func exportarGrafica(_ sender: Any?) {
+        guard let ventana = ventanaGrafica,
+              let rep = vistaGrafica.bitmapImageRepForCachingDisplay(
+                  in: vistaGrafica.bounds
+              ) else { return }
+        vistaGrafica.cacheDisplay(in: vistaGrafica.bounds, to: rep)
+        guard let png = rep.representation(using: .png, properties: [:]) else { return }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "Mirlo gráfica 24 h.png"
+        panel.beginSheetModal(for: ventana) { respuesta in
+            guard respuesta == .OK, let url = panel.url else { return }
+            try? png.write(to: url, options: .atomic)
+        }
     }
 
     @objc private func abrirGrafica(_ sender: Any?) {
@@ -3316,10 +3697,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // El menú aún se está cerrando cuando llega la acción; se muestra en
         // el siguiente ciclo para que la ventana reciba el foco.
         DispatchQueue.main.async {
-            self.posicionarVentanaGrafica()
+            if !self.graficaRestaurada || !self.ventanaGraficaEnPantalla() {
+                self.posicionarVentanaGrafica()
+            }
             NSApp.activate(ignoringOtherApps: true)
             self.ventanaGrafica?.makeKeyAndOrderFront(nil)
         }
+    }
+
+    private func ventanaGraficaEnPantalla() -> Bool {
+        guard let ventana = ventanaGrafica else { return false }
+        return NSScreen.screens.contains { $0.visibleFrame.intersects(ventana.frame) }
     }
 
     private func posicionarVentanaGrafica() {
@@ -3341,40 +3729,199 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ventana.setFrameOrigin(origen)
     }
 
-    private func camposGraficaDisponibles() -> [(clave: String, nombre: String)] {
-        guard modoLocalidad else { return CAMPOS_GRAFICA }
-        let permitidos: Set<String> = [
-            "exterior.temperatura", "exterior.humedad",
-            "viento.velocidad", "viento.racha",
-            "lluvia.actual", "lluvia.24h",
-        ]
-        return CAMPOS_GRAFICA.filter { permitidos.contains($0.clave) }
+    // Catálogo de la gráfica. En modo cuenta sale de `modulos` para que cada
+    // sensor tenga su propia serie; si todavía no hay lecturas, se usan los
+    // campos heredados.
+    private var catalogoGraficaListo: Bool {
+        if modoLocalidad { return true }
+        let modulos = datos?["modulos"] as? [[String: Any]] ?? []
+        return !modulos.isEmpty
+    }
+
+    private func camposGraficaDisponibles() -> [CampoGrafica] {
+        if modoLocalidad {
+            let permitidos: Set<String> = [
+                "exterior.temperatura", "exterior.humedad",
+                "viento.velocidad", "viento.racha",
+                "lluvia.actual", "lluvia.24h",
+            ]
+            return CAMPOS_GRAFICA.filter { permitidos.contains($0.clave) }
+        }
+
+        let modulos = datos?["modulos"] as? [[String: Any]] ?? []
+        guard !modulos.isEmpty else { return CAMPOS_GRAFICA }
+
+        var salida: [CampoGrafica] = []
+        for modulo in modulos {
+            guard let id = modulo["id"] as? String, !id.isEmpty,
+                  let tipo = modulo["tipo"] as? String else { continue }
+            let datosMod = modulo["datos"] as? [String: Any] ?? [:]
+            let estacion = (modulo["estacion"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let nombreModulo = (modulo["nombre"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let etiquetaModulo = nombreModulo.isEmpty
+                ? nombreTipoModulo(tipo)
+                : nombreModulo
+            let grupo = estacion.isEmpty
+                ? etiquetaModulo
+                : "\(estacion) · \(etiquetaModulo)"
+
+            for campo in camposDeModulo(tipo: tipo, datos: datosMod) {
+                salida.append(CampoGrafica(
+                    clave: "mod:\(id):\(campo.clave)",
+                    nombre: grupo + " — " + campo.nombre,
+                    nombreCorto: campo.nombre,
+                    unidad: campo.unidad,
+                    decimales: campo.decimales,
+                    idModulo: id,
+                    serieRemota: campo.clave,
+                    modulo: nil,
+                    tipo: tipo,
+                    grupo: grupo,
+                    campoBase: campo.clave
+                ))
+            }
+        }
+
+        // Además de los módulos, se mantienen los campos que solo tienen
+        // historial local en este Mac (caldera y lluvia instantánea).
+        let locales: Set<String> = ["caldera.encendida", "lluvia.actual"]
+        for campo in CAMPOS_GRAFICA where locales.contains(campo.clave) {
+            salida.append(CampoGrafica(
+                clave: campo.clave,
+                nombre: campo.nombre,
+                nombreCorto: campo.nombreCorto,
+                unidad: campo.unidad,
+                decimales: campo.decimales,
+                idModulo: nil,
+                serieRemota: campo.serieRemota,
+                modulo: nil,
+                tipo: campo.tipo,
+                grupo: L("Este Mac"),
+                campoBase: campo.campoBase
+            ))
+        }
+        return salida.isEmpty ? CAMPOS_GRAFICA : salida
+    }
+
+    private func nombreTipoModulo(_ tipo: String) -> String {
+        switch tipo {
+        case "exterior": return L("Exterior")
+        case "interior": return L("Interior")
+        case "viento": return L("Viento")
+        case "lluvia": return L("Lluvia")
+        case "termostato": return L("Termostato")
+        default: return L("Sensor")
+        }
+    }
+
+    private struct CampoModulo {
+        let clave: String
+        let nombre: String
+        let unidad: String
+        let decimales: Int
+    }
+
+    private func camposDeModulo(tipo: String, datos: [String: Any]) -> [CampoModulo] {
+        func hay(_ clave: String) -> Bool { num(datos[clave]) != nil }
+        var campos: [CampoModulo] = []
+        func añadir(_ clave: String, _ nombre: String, _ unidad: String, _ decimales: Int) {
+            guard hay(clave) else { return }
+            campos.append(CampoModulo(
+                clave: clave,
+                nombre: nombre,
+                unidad: unidad,
+                decimales: decimales
+            ))
+        }
+
+        switch tipo {
+        case "exterior":
+            añadir("temperatura", L("Temperatura"), "°C", 1)
+            añadir("humedad", L("Humedad"), "%", 0)
+        case "interior":
+            añadir("temperatura", L("Temperatura"), "°C", 1)
+            añadir("humedad", L("Humedad"), "%", 0)
+            añadir("co2", L("CO₂"), "ppm", 0)
+            añadir("presion", L("Presión"), "hPa", 0)
+            añadir("ruido", L("Ruido"), "dB", 0)
+        case "viento":
+            añadir("viento", L("Viento"), "km/h", 0)
+            añadir("racha", L("Racha"), "km/h", 0)
+        case "lluvia":
+            añadir("lluvia", L("Lluvia en 24 h"), "mm", 1)
+        case "termostato":
+            añadir("temperatura", L("Temperatura"), "°C", 1)
+        default:
+            añadir("temperatura", L("Temperatura"), "°C", 1)
+            añadir("humedad", L("Humedad"), "%", 0)
+            añadir("co2", L("CO₂"), "ppm", 0)
+            añadir("presion", L("Presión"), "hPa", 0)
+            añadir("ruido", L("Ruido"), "dB", 0)
+            añadir("viento", L("Viento"), "km/h", 0)
+            añadir("racha", L("Racha"), "km/h", 0)
+            añadir("lluvia", L("Lluvia en 24 h"), "mm", 1)
+        }
+        return campos
+    }
+
+    private func seleccionarCampoGrafica(_ clave: String, en popup: NSPopUpButton) {
+        if let item = popup.itemArray.first(where: {
+            ($0.representedObject as? String) == clave
+        }) {
+            popup.select(item)
+        }
     }
 
     private func actualizarCamposGrafica() {
         guard let popup = popupGrafica else { return }
         let campos = camposGraficaDisponibles()
-        if !campos.contains(where: { $0.clave == cfg.graphField }),
-           let primero = campos.first {
-            cfg.graphField = primero.clave
-            cfg.save()
+        if catalogoGraficaListo,
+           !campos.contains(where: { $0.clave == cfg.graphField }) {
+            // Por defecto, la temperatura exterior de la primera estación. Si
+            // no hay exterior, el primer campo disponible. No se guarda nada
+            // mientras el catálogo es el de respaldo: si las lecturas aún no
+            // han llegado, se perdería la elección del usuario.
+            let preferido = campos.first {
+                $0.tipo == "exterior" && $0.campoBase == "temperatura"
+            } ?? campos.first
+            if let preferido {
+                cfg.graphField = preferido.clave
+                cfg.save()
+            }
         }
+
         let claves = campos.map { $0.clave }
         if claves != camposGraficaClaves {
             popup.removeAllItems()
-            popup.addItems(withTitles: campos.map { $0.nombre })
+            var grupoAnterior = ""
+            for campo in campos {
+                if !campo.grupo.isEmpty && campo.grupo != grupoAnterior {
+                    if popup.numberOfItems > 0 {
+                        popup.menu?.addItem(.separator())
+                    }
+                    grupoAnterior = campo.grupo
+                }
+                let item = NSMenuItem(
+                    title: campo.nombre,
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                item.representedObject = campo.clave
+                popup.menu?.addItem(item)
+            }
             camposGraficaClaves = claves
         }
-        if let indice = campos.firstIndex(where: { $0.clave == cfg.graphField }) {
-            popup.selectItem(at: indice)
-        }
+        seleccionarCampoGrafica(cfg.graphField, en: popup)
     }
 
     @objc private func cambiarCampoGrafica(_ sender: NSPopUpButton) {
-        let campos = camposGraficaDisponibles()
-        let indice = sender.indexOfSelectedItem
-        guard indice >= 0, indice < campos.count else { return }
-        cfg.graphField = campos[indice].clave
+        guard let clave = sender.selectedItem?.representedObject as? String,
+              camposGraficaDisponibles().contains(where: {
+                  $0.clave == clave
+              }) else { return }
+        cfg.graphField = clave
         cfg.save()
         actualizarGrafica()
     }
@@ -3382,61 +3929,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func actualizarGrafica() {
         actualizarCamposGrafica()
         let campos = camposGraficaDisponibles()
-        if let indice = campos.firstIndex(where: { $0.clave == cfg.graphField }) {
-            popupGrafica?.selectItem(at: indice)
+        guard let campo = campos.first(where: { $0.clave == cfg.graphField })
+            ?? campos.first else { return }
+        if catalogoGraficaListo, cfg.graphField != campo.clave {
+            cfg.graphField = campo.clave
+            cfg.save()
         }
-        let info = campoAviso(cfg.graphField)
-        ventanaGrafica?.title = L("Gráfica 24 h") + " · " + info.nombre
-        vistaGrafica.campo = cfg.graphField
-        if let remota = historialNetatmo[cfg.graphField], remota.puntos.count >= 2 {
+
+        ventanaGrafica?.title = L("Gráfica 24 h") + " · " + campo.nombreCorto
+        vistaGrafica.campo = campo.clave
+        vistaGrafica.nombreCampo = campo.nombre
+        vistaGrafica.unidadCampo = campo.unidad
+        vistaGrafica.decimalesCampo = campo.decimales
+
+        if let remota = historialNetatmo[campo.clave], remota.puntos.count >= 2 {
             vistaGrafica.puntos = remota.puntos
             vistaGrafica.origen = "Netatmo"
             vistaGrafica.nota = ""
         } else {
-            vistaGrafica.puntos = leerHistorialGrafica(campo: cfg.graphField)
+            // Solo los campos heredados tienen muestras locales.
+            vistaGrafica.puntos = campo.idModulo == nil
+                ? leerHistorialGrafica(campo: campo.clave)
+                : []
             vistaGrafica.origen = "local"
             // Si el módulo ya respondió 404, Netatmo no publica histórico de
             // ese campo: se avisa en el pie para que no parezca un fallo.
             if !modoLocalidad,
-               let modulo = moduloGrafica(cfg.graphField),
-               moduloSinHistorial.contains(modulo) {
+               let objetivo = objetivoHistorial(campo),
+               moduloSinHistorial.contains(objetivo.etiqueta) {
                 vistaGrafica.nota = L("sin histórico de Netatmo")
             } else {
                 vistaGrafica.nota = ""
             }
         }
         vistaGrafica.needsDisplay = true
-        refrescarHistorialNetatmo(campo: cfg.graphField)
+        NSAccessibility.post(element: vistaGrafica, notification: .valueChanged)
+        refrescarHistorialNetatmo(campo: campo)
     }
 
-    // Módulo de Netatmo que corresponde a cada campo de la gráfica. La
-    // caldera no tiene serie propia en getmeasure, así que sigue siendo local.
-    private func moduloGrafica(_ campo: String) -> String? {
-        if campo.hasPrefix("exterior.") { return "exterior" }
-        if campo.hasPrefix("interior.") { return "interior" }
-        if campo.hasPrefix("termostato.") { return "termostato" }
-        if campo.hasPrefix("viento.") { return "viento" }
-        if campo.hasPrefix("lluvia.") { return "lluvia" }
+    // Consulta al Worker para un campo: por `id` de módulo (recomendado) o por
+    // la forma antigua `modulo=`. La caldera no tiene serie en getmeasure.
+    private func objetivoHistorial(
+        _ campo: CampoGrafica
+    ) -> (consulta: String, etiqueta: String, prefijo: String)? {
+        if let id = campo.idModulo, !id.isEmpty {
+            let codificado = id.addingPercentEncoding(
+                withAllowedCharacters: .urlQueryAllowed
+            ) ?? id
+            return ("id=" + codificado, "id:" + id, "mod:" + id + ":")
+        }
+        if let modulo = campo.modulo {
+            return ("modulo=" + modulo, "modulo:" + modulo, "")
+        }
         return nil
     }
 
     // Pide a Netatmo (a través del Worker) la serie de 24 h del módulo que
     // muestra la gráfica. Se cachea 15 min: en ese tiempo no se repite la
     // consulta ni al cambiar de campo ni al abrir el menú varias veces.
-    private func refrescarHistorialNetatmo(campo: String) {
+    private func refrescarHistorialNetatmo(campo: CampoGrafica) {
         guard !modoLocalidad,
               isConnected, let credential = credential,
-              let modulo = moduloGrafica(campo),
-              !moduloSinHistorial.contains(modulo),
-              !cargandoHistorial.contains(modulo) else { return }
-        if let actual = historialNetatmo[campo],
+              let objetivo = objetivoHistorial(campo),
+              !moduloSinHistorial.contains(objetivo.etiqueta),
+              !cargandoHistorial.contains(objetivo.etiqueta) else { return }
+        if let actual = historialNetatmo[campo.clave],
            Date().timeIntervalSince(actual.cargado) < 15 * 60 { return }
-        if let intento = intentoHistorial[modulo],
+        if let intento = intentoHistorial[objetivo.etiqueta],
            Date().timeIntervalSince(intento) < 5 * 60 { return }
 
-        intentoHistorial[modulo] = Date()
-        cargandoHistorial.insert(modulo)
-        let url = cfg.serviceUrl + "/v1/history?modulo=" + modulo
+        intentoHistorial[objetivo.etiqueta] = Date()
+        cargandoHistorial.insert(objetivo.etiqueta)
+        let url = cfg.serviceUrl + "/v1/history?" + objetivo.consulta
+        let prefijo = objetivo.prefijo
+        let etiqueta = objetivo.etiqueta
         DispatchQueue.global(qos: .utility).async {
             do {
                 let result = try httpJSON(
@@ -3445,11 +4011,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     timeZone: TimeZone.current.identifier
                 )
                 DispatchQueue.main.async {
-                    self.cargandoHistorial.remove(modulo)
+                    self.cargandoHistorial.remove(etiqueta)
                     if result.status == 404 {
-                        // El sensor no existe en esta cuenta (p. ej. viento de
-                        // una estación cercana): se usa el historial local.
-                        self.moduloSinHistorial.insert(modulo)
+                        // El módulo no existe en esta cuenta o no tiene serie:
+                        // se usa el historial local cuando lo haya.
+                        self.moduloSinHistorial.insert(etiqueta)
                     } else if (200..<300).contains(result.status),
                               let series = result.json?["series"] as? [String: Any] {
                         var cargados = 0
@@ -3462,17 +4028,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 }
                             }
                             if puntos.count >= 2 {
-                                self.historialNetatmo[clave] = (puntos, Date())
+                                self.historialNetatmo[prefijo + clave] = (puntos, Date())
                                 cargados += 1
                             }
                         }
-                        if cargados == 0 { self.moduloSinHistorial.insert(modulo) }
+                        if cargados == 0 { self.moduloSinHistorial.insert(etiqueta) }
                     }
                     self.actualizarGrafica()
                 }
             } catch {
                 DispatchQueue.main.async {
-                    self.cargandoHistorial.remove(modulo)
+                    self.cargandoHistorial.remove(etiqueta)
                 }
             }
         }
@@ -3574,14 +4140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func abrirAvisos(_ sender: Any?) {
-        if ventanaAvisos == nil {
-            let ventana = VentanaAvisos(motor: motorAvisos, pollSeconds: cfg.pollSeconds)
-            ventana.onTestNotification = { [weak self] in
-                self?.probarNotificacion(nil)
-            }
-            ventanaAvisos = ventana
-        }
-        ventanaAvisos?.mostrar()
+        abrirAjustes(seccion: .avisos)
     }
 
     @objc private func alternarAvisos(_ sender: Any?) {
@@ -3828,9 +4387,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             camposGraficaClaves.removeAll()
             if visible { abrirGrafica(nil) }
         }
-        if ventanaAvisos != nil {
-            ventanaAvisos = nil
-        }
         if ventanaEstacion != nil {
             ventanaEstacion?.cerrar()
             ventanaEstacion = nil
@@ -3851,11 +4407,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    #if APPSTORE
     @objc private func mostrarAjustes(_ sender: Any?) {
+        abrirAjustes(seccion: nil)
+    }
+
+    private func abrirAjustes(seccion: SeccionAjustes?) {
         if settingsWindow == nil {
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-            let window = SettingsWindow(currentVersion: version)
+            let window = SettingsWindow(
+                currentVersion: version,
+                motor: motorAvisos,
+                pollSeconds: cfg.pollSeconds
+            )
             window.onLanguageChanged = { [weak self] codigo in
                 self?.cambiarIdioma(codigo)
             }
@@ -3868,23 +4431,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.cfg.save()
                 self.updateMenu()
             }
-            settingsWindow = window
-        }
-        settingsWindow?.show(
-            language: cfg.idioma,
-            highlight: cfg.highlight,
-            color: NSColor.desdeHex(cfg.highlightColor) ?? .systemOrange,
-            textColor: cfg.highlightTextColor,
-            highlightItems: Set(cfg.highlightItems)
-        )
-    }
-    #else
-    @objc private func mostrarAjustes(_ sender: Any?) {
-        if settingsWindow == nil {
-            let window = SettingsWindow(currentVersion: Updater.shared.currentVersion)
-            window.onLanguageChanged = { [weak self] codigo in
-                self?.cambiarIdioma(codigo)
+            window.onBarValueChanged = { [weak self] clave in
+                guard let self = self else { return }
+                self.cfg.barValue = clave
+                self.cfg.save()
+                self.updateMenu()
             }
+            window.onSectionChanged = { [weak self] valor in
+                guard let self = self else { return }
+                self.cfg.ajustesSection = valor
+                self.cfg.save()
+            }
+            window.onResetConnection = { [weak self] in
+                self?.restablecer(nil)
+            }
+            window.onCambiarServicio = { [weak self] in
+                self?.cambiarServicio(nil)
+            }
+            window.onClearHistory = { [weak self] in
+                self?.borrarHistorial(nil)
+            }
+            window.onDiagnostics = { [weak self] in
+                self?.copiarDiagnostico()
+            }
+            window.onBuscarEstacion = { [weak self] in
+                self?.mostrarEstacionCercana(nil)
+            }
+            window.onEstacionPrincipalChanged = { [weak self] nombre in
+                guard let self = self else { return }
+                self.cfg.estacionPrincipal = nombre
+                self.cfg.save()
+                if let bruto = self.datosBrutos {
+                    self.datos = self.datosConEstacionPrincipal(bruto)
+                }
+                self.updateMenu()
+                self.settingsWindow?.actualizarEstaciones(
+                    self.resumenEstacionesAjustes())
+            }
+            window.onTestNotification = { [weak self] in
+                self?.probarNotificacion(nil)
+            }
+            #if !APPSTORE
             window.onAutoUpdateChanged = { [weak self] enabled in
                 guard let self = self else { return }
                 self.cfg.autoUpdate = enabled
@@ -3903,28 +4490,170 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             window.onCheckNow = { [weak self] in
                 self?.checkForUpdates(manual: true)
             }
-            window.onHighlightChanged = { [weak self] enabled, color, textColor, items in
-                guard let self = self else { return }
-                self.cfg.highlight = enabled
-                self.cfg.highlightColor = color.hexRGB
-                self.cfg.highlightTextColor = textColor
-                self.cfg.highlightItems = items.sorted()
-                self.cfg.save()
-                self.updateMenu()
-            }
+            #endif
             settingsWindow = window
         }
+
+        let barra = barraDisponibleAjustes()
+        let resumen = resumenEstacionesAjustes()
+        let seccionElegida = seccion?.rawValue ?? cfg.ajustesSection
+        #if APPSTORE
         settingsWindow?.show(
             language: cfg.idioma,
+            barValue: cfg.barValue,
+            barra: barra,
+            highlight: cfg.highlight,
+            color: NSColor.desdeHex(cfg.highlightColor) ?? .systemOrange,
+            textColor: cfg.highlightTextColor,
+            highlightItems: Set(cfg.highlightItems),
+            seccion: seccionElegida,
+            resumen: resumen,
+            serviceUrl: cfg.serviceUrl.isEmpty ? L("Sin configurar") : cfg.serviceUrl
+        )
+        #else
+        settingsWindow?.show(
+            language: cfg.idioma,
+            barValue: cfg.barValue,
+            barra: barra,
             autoUpdate: cfg.autoUpdate,
             status: updateStatus,
             highlight: cfg.highlight,
             color: NSColor.desdeHex(cfg.highlightColor) ?? .systemOrange,
             textColor: cfg.highlightTextColor,
-            highlightItems: Set(cfg.highlightItems)
+            highlightItems: Set(cfg.highlightItems),
+            seccion: seccionElegida,
+            resumen: resumen,
+            serviceUrl: cfg.serviceUrl.isEmpty ? L("Sin configurar") : cfg.serviceUrl
+        )
+        #endif
+        settingsWindow?.refrescarAvisos()
+    }
+
+    private func barraDisponibleAjustes() -> [(clave: String, titulo: String)] {
+        let permitidos: Set<String> = [
+            "exterior", "humedad_ext", "viento", "lluvia", "ninguno",
+        ]
+        return VALORES_BARRA.filter { !modoLocalidad || permitidos.contains($0.0) }
+    }
+
+    // Resumen de estaciones y módulos para la sección Estaciones. Se calcula
+    // al abrir Ajustes y cada vez que llega una lectura mientras está visible.
+    private func resumenEstacionesAjustes() -> ResumenEstacionesAjustes {
+        let publica = cfg.favorito.map {
+            L("%@ (%@ km)", $0.nombre, fmtNum($0.distanciaKm, 1))
+        }
+
+        if modoLocalidad {
+            var estaciones: [EstacionAjustes] = []
+            if let favorito = cfg.favorito {
+                estaciones.append(EstacionAjustes(nombre: favorito.nombre, modulos: []))
+            }
+            return ResumenEstacionesAjustes(
+                modo: L("Estación pública"),
+                detalle: L("Sin cuenta de Netatmo. Los datos vienen de la estación pública elegida."),
+                estaciones: estaciones,
+                publica: publica,
+                principalActual: nil,
+                principales: []
+            )
+        }
+
+        guard isConnected else {
+            return ResumenEstacionesAjustes(
+                modo: L("Sin conexión"),
+                detalle: L("Conecta tu cuenta de Netatmo para ver las estaciones y sus módulos."),
+                estaciones: [],
+                publica: publica,
+                principalActual: nil,
+                principales: []
+            )
+        }
+
+        let modulos = datos?["modulos"] as? [[String: Any]] ?? []
+        var orden: [String] = []
+        var porEstacion: [String: [ModuloAjustes]] = [:]
+        for modulo in modulos {
+            var estacion = (modulo["estacion"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if estacion.isEmpty { estacion = L("Mi casa") }
+            let nombre = (modulo["nombre"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let tipo = modulo["tipo"] as? String ?? ""
+            let visible = nombre.isEmpty ? nombreTipoModulo(tipo) : nombre
+            if porEstacion[estacion] == nil {
+                porEstacion[estacion] = []
+                orden.append(estacion)
+            }
+            porEstacion[estacion]?.append(
+                ModuloAjustes(nombre: visible, tipo: nombreTipoModulo(tipo))
+            )
+        }
+
+        let estaciones = orden.map {
+            EstacionAjustes(nombre: $0, modulos: porEstacion[$0] ?? [])
+        }
+        let detalle = estaciones.isEmpty
+            ? L("Aún no hay lecturas. La primera consulta rellenará esta lista.")
+            : L("%d estaciones, %d módulos.", estaciones.count, modulos.count)
+        return ResumenEstacionesAjustes(
+            modo: L("Cuenta de Netatmo"),
+            detalle: detalle,
+            estaciones: estaciones,
+            publica: publica,
+            principalActual: cfg.estacionPrincipal.isEmpty ? nil : cfg.estacionPrincipal,
+            principales: orden
         )
     }
 
+    @objc private func copiarDiagnosticoObjc(_ sender: Any?) {
+        copiarDiagnostico()
+    }
+
+    private func copiarDiagnostico() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let modo: String
+        if modoLocalidad {
+            modo = "localidad"
+        } else if isConnected {
+            modo = "cuenta"
+        } else {
+            modo = "sin conexión"
+        }
+        let modulos = (datos?["modulos"] as? [[String: Any]])?.count ?? 0
+        let avisos = motorAvisos.snapshot()
+        let activos = avisos.reglas.filter { $0.activo }.count
+        let ultimo = (datos?["actualizado"] as? String) ?? "sin datos"
+        let muestras = historialNetatmo.values.reduce(0) { $0 + $1.puntos.count }
+        let consulta = lastSuccess.map {
+            ISO8601DateFormatter().string(from: $0)
+        } ?? "ninguna"
+        let lineas = [
+            "Mirlo Weather \(version)",
+            "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)",
+            "Modo: \(modo)",
+            "Servicio: \(cfg.serviceUrl.isEmpty ? "sin configurar" : cfg.serviceUrl)",
+            "Idioma: \(cfg.idioma)",
+            "Último dato: \(ultimo)",
+            "Última consulta: \(consulta)",
+            "Último error: \(lastError ?? "ninguno")",
+            "Módulos: \(modulos)",
+            "Historial local: \(muestras) muestras",
+            "Avisos: \(activos) activos de \(avisos.reglas.count)",
+            "Generado: \(ISO8601DateFormatter().string(from: Date()))",
+        ]
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(lineas.joined(separator: "\n"), forType: .string)
+
+        NSApp.activate(ignoringOtherApps: true)
+        let alerta = NSAlert()
+        alerta.messageText = L("Diagnóstico copiado")
+        alerta.informativeText = L("Pégalo en el informe de un problema. No incluye tu credencial de Netatmo.")
+        alerta.addButton(withTitle: L("Aceptar"))
+        alerta.runModal()
+    }
+
+    #if !APPSTORE
     private func scheduleUpdateChecks() {
         #if APPSTORE
         return
@@ -4077,6 +4806,154 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.informativeText = mensaje
         alert.addButton(withTitle: L("Aceptar"))
         alert.runModal()
+    }
+
+    private func pedirTexto(titulo: String, mensaje: String, valor: String,
+                            completion: @escaping (String) -> Void) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alerta = NSAlert()
+        alerta.messageText = titulo
+        alerta.informativeText = mensaje
+        alerta.addButton(withTitle: L("Guardar"))
+        alerta.addButton(withTitle: L("Cancelar"))
+        let campo = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        campo.stringValue = valor
+        alerta.accessoryView = campo
+        alerta.window.initialFirstResponder = campo
+        guard alerta.runModal() == .alertFirstButtonReturn else { return }
+        completion(campo.stringValue)
+    }
+
+    // ------------------------- localidades guardadas -------------------------
+    private func reconstruirSubmenuLocalidades() {
+        let menu = NSMenu()
+        let actual = cfg.localidad
+        for (indice, loc) in cfg.localidades.enumerated() {
+            let item = NSMenuItem(
+                title: loc.nombre,
+                action: #selector(elegirLocalidadGuardada(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = indice
+            item.state = loc.nombre == actual?.nombre ? .on : .off
+            item.toolTip = L("Estaciones públicas en %d km a la redonda", loc.radioKm)
+            menu.addItem(item)
+        }
+        if !cfg.localidades.isEmpty { menu.addItem(.separator()) }
+
+        let anadir = NSMenuItem(
+            title: L("Añadir localidad…"),
+            action: #selector(cambiarLocalidad(_:)),
+            keyEquivalent: ""
+        )
+        anadir.target = self
+        menu.addItem(anadir)
+
+        let renombrar = NSMenuItem(
+            title: L("Renombrar esta localidad…"),
+            action: #selector(renombrarLocalidad(_:)),
+            keyEquivalent: ""
+        )
+        renombrar.target = self
+        renombrar.isEnabled = actual != nil
+        menu.addItem(renombrar)
+
+        let quitar = NSMenuItem(
+            title: L("Quitar esta localidad…"),
+            action: #selector(quitarLocalidad(_:)),
+            keyEquivalent: ""
+        )
+        quitar.target = self
+        quitar.isEnabled = cfg.localidades.count > 1
+        menu.addItem(quitar)
+
+        itCambiarLocalidad.title = L("Localidad")
+        itCambiarLocalidad.action = nil
+        itCambiarLocalidad.submenu = menu
+    }
+
+    @objc private func elegirLocalidadGuardada(_ sender: NSMenuItem) {
+        guard let indice = sender.representedObject as? Int,
+              indice >= 0, indice < cfg.localidades.count else { return }
+        activarLocalidadGuardada(cfg.localidades[indice])
+    }
+
+    private func activarLocalidadGuardada(_ localidad: LocalidadConfig) {
+        if let actual = cfg.localidad,
+           actual.nombre == localidad.nombre,
+           actual.lat == localidad.lat,
+           actual.lon == localidad.lon {
+            return
+        }
+        cfg.modo = "localidad"
+        cfg.localidad = localidad
+        if cfg.serviceUrl.isEmpty { cfg.serviceUrl = DEFAULT_SERVICE_URL }
+        cfg.save()
+
+        generacionLocalidad += 1
+        refreshing = false
+        datos = nil
+        datosBrutos = nil
+        composicionLocalidad = nil
+        avisoLocalidad = nil
+        estacionesLocalidad = []
+        historialNetatmo.removeAll()
+        moduloSinHistorial.removeAll()
+        lastSuccess = nil
+        lastError = nil
+        needsReconnect = false
+        updateMenu()
+        refrescarLocalidad(manual: true)
+    }
+
+    @objc private func renombrarLocalidad(_ sender: Any?) {
+        guard let actual = cfg.localidad else { return }
+        pedirTexto(
+            titulo: L("Renombrar localidad"),
+            mensaje: L("El nombre solo se usa en este Mac para reconocerla en el menú."),
+            valor: actual.nombre
+        ) { [weak self] texto in
+            guard let self = self else { return }
+            let nuevo = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !nuevo.isEmpty, nuevo != actual.nombre else { return }
+            guard !self.cfg.localidades.contains(where: { $0.nombre == nuevo }) else {
+                self.showError(
+                    L("Nombre repetido"),
+                    L("Ya hay una localidad guardada con ese nombre.")
+                )
+                return
+            }
+            var renombrada = actual
+            renombrada.nombre = nuevo
+            if let indice = self.cfg.localidades.firstIndex(where: {
+                $0.nombre == actual.nombre
+            }) {
+                self.cfg.localidades[indice] = renombrada
+            }
+            self.cfg.localidad = renombrada
+            self.cfg.save()
+            self.updateMenu()
+        }
+    }
+
+    @objc private func quitarLocalidad(_ sender: Any?) {
+        guard cfg.localidades.count > 1, let actual = cfg.localidad else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alerta = NSAlert()
+        alerta.alertStyle = .warning
+        alerta.messageText = L("¿Quitar «%@»?", actual.nombre)
+        alerta.informativeText = L(
+            "Se elimina de la lista guardada. No se borra ningún historial de lecturas."
+        )
+        alerta.addButton(withTitle: L("Quitar"))
+        alerta.addButton(withTitle: L("Cancelar"))
+        guard alerta.runModal() == .alertFirstButtonReturn else { return }
+        cfg.localidades.removeAll { $0.nombre == actual.nombre }
+        cfg.save()
+        if let siguiente = cfg.localidades.first {
+            activarLocalidadGuardada(siguiente)
+        }
     }
 }
 

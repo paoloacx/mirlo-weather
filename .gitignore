@@ -7,3 +7,22 @@ Mirlo Weather.app/
 MirloWeather.xcodeproj/xcuserdata/
 MirloWeather.xcodeproj/project.xcworkspace/xcuserdata/
 DerivedData/
+# macOS
+.DS_Store
+*.textClipping
+# Node / Cloudflare
+node_modules/
+.wrangler/
+dist/
+.dev.vars
+# Swift / Xcode
+build/
+.build/
+DerivedData/
+xcuserdata/
+.swiftpm/
+# Entorno
+*.log
+.env
+.env.local
+
